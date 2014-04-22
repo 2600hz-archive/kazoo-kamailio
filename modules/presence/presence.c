@@ -134,6 +134,7 @@ char prefix='a';
 int startup_time=0;
 str db_url = {0, 0};
 int expires_offset = 0;
+int min_expires= 0;
 int max_expires= 3600;
 int shtable_size= 9;
 shtable_t subs_htable= NULL;
@@ -186,6 +187,7 @@ static param_export_t params[]={
 	{ "notifier_processes",     INT_PARAM, &pres_notifier_processes },
 	{ "to_tag_pref",            STR_PARAM, &to_tag_pref },
 	{ "expires_offset",         INT_PARAM, &expires_offset },
+	{ "min_expires",            INT_PARAM, &min_expires },
 	{ "max_expires",            INT_PARAM, &max_expires },
 	{ "server_address",         STR_PARAM, &server_address.s},
 	{ "subs_htable_size",       INT_PARAM, &shtable_size},
@@ -262,6 +264,12 @@ static int mod_init(void)
 	if(max_expires<= 0)
 		max_expires = 3600;
 
+	if(min_expires < 0)
+		min_expires = 0;
+
+	if(min_expires > max_expires)
+		min_expires = max_expires;
+
 	if(server_address.s== NULL)
 		LM_DBG("server_address parameter not set in configuration file\n");
 	
@@ -311,6 +319,8 @@ static int mod_init(void)
 		return -1;
 	}
 
+	
+	#if 0
 	/*verify table versions */
 	if((db_check_table_version(&pa_dbf, pa_db, &presentity_table, P_TABLE_VERSION) < 0) ||
 		(db_check_table_version(&pa_dbf, pa_db, &watchers_table, S_TABLE_VERSION) < 0)) {
@@ -323,6 +333,7 @@ static int mod_init(void)
 		LM_ERR("wrong table version for %s\n", active_watchers_table.s);
 		return -1;
 	}
+	#endif
 
 	if(subs_dbmode != DB_ONLY) {
 		if(shtable_size< 1)
@@ -336,7 +347,7 @@ static int mod_init(void)
 			LM_ERR(" initializing subscribe hash table\n");
 			return -1;
 		}
-		if(restore_db_subs()< 0)
+		if(subs_dbmode!=NO_DB && restore_db_subs()< 0)
 		{
 			LM_ERR("restoring subscribe info from database\n");
 			return -1;
@@ -356,11 +367,13 @@ static int mod_init(void)
 			return -1;
 		}
 
+#if 0
 		if(pres_htable_restore()< 0)
 		{
 			LM_ERR("filling in presentity hash table from database\n");
 			return -1;
 		}
+#endif
 	}
 
 	startup_time = (int) time(NULL);
@@ -392,10 +405,10 @@ static int mod_init(void)
 
 		register_basic_timers(pres_notifier_processes);
 	}
-
+#if 0
 	pa_dbf.close(pa_db);
 	pa_db = NULL;
-
+#endif
 	return 0;
 }
 
@@ -670,6 +683,7 @@ error:
 	}
 	return -1;
 }
+
 
 /*! \brief
  *  mi cmd: refreshWatchers

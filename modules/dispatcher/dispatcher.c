@@ -155,6 +155,7 @@ static int w_ds_load_update(struct sip_msg*, char*, char*);
 
 static int w_ds_is_from_list0(struct sip_msg*, char*, char*);
 static int w_ds_is_from_list1(struct sip_msg*, char*, char*);
+static int w_ds_is_from_list2(struct sip_msg *msg, char *set, char *ignore_port);
 
 static void destroy(void);
 
@@ -182,6 +183,8 @@ static cmd_export_t cmds[]={
 		0, 0, REQUEST_ROUTE|FAILURE_ROUTE|ONREPLY_ROUTE|BRANCH_ROUTE},
 	{"ds_is_from_list",  (cmd_function)w_ds_is_from_list1, 1,
 		fixup_uint_null, 0, ANY_ROUTE},
+	{"ds_is_from_list",  (cmd_function)w_ds_is_from_list2, 2,
+		fixup_uint_uint, 0, ANY_ROUTE},
 	{"ds_load_unset",    (cmd_function)w_ds_load_unset,   0,
 		0, 0, ANY_ROUTE},
 	{"ds_load_update",   (cmd_function)w_ds_load_update,  0,
@@ -793,6 +796,13 @@ static int w_ds_is_from_list1(struct sip_msg *msg, char *set, char *str2)
 {
 	return ds_is_from_list(msg, (int)(long)set);
 }
+
+static int w_ds_is_from_list2(struct sip_msg *msg, char *set, char *ignore_port)
+{
+	return ds_is_from_list_no_port(msg, (int)(long)set, (int)(long)ignore_port);
+}
+
+
 
 static int ds_parse_reply_codes() {
 	param_t* params_list = NULL;

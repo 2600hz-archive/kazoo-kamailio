@@ -48,6 +48,8 @@ typedef int (*pres_handle_publish_t)(struct sip_msg* msg, char *str1, char* str2
 typedef int (*pres_handle_subscribe0_t)(struct sip_msg* msg);
 typedef int (*pres_handle_subscribe_t)(struct sip_msg* msg, str watcher_user, str watcher_domain);
 
+typedef int (*pres_notify_watchers_t)(str* user_uri, str* event, str* body);
+
 typedef struct presence_api {
 	add_event_t add_event;
 	contains_event_t contains_event;
@@ -71,6 +73,7 @@ typedef struct presence_api {
 	pres_handle_publish_t handle_publish;
 	pres_handle_subscribe0_t handle_subscribe0;
 	pres_handle_subscribe_t handle_subscribe;
+	pres_notify_watchers_t notify_watchers;
 } presence_api_t;
 
 int bind_presence(presence_api_t* api);

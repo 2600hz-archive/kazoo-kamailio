@@ -421,7 +421,8 @@ static int child_init(int _rank)
 		case WRITE_THROUGH:
 			/* we need connection from working SIP and TIMER and MAIN
 			 * processes only */
-			if (_rank<=0 && _rank!=PROC_TIMER && _rank!=PROC_MAIN)
+//			if (_rank<=0 && _rank!=PROC_TIMER && _rank!=PROC_MAIN)
+			if (_rank<=0 && _rank!=PROC_TIMER)
 				return 0;
 			break;
 		case WRITE_BACK:
@@ -437,6 +438,7 @@ static int child_init(int _rank)
 		LM_ERR("child(%d): failed to connect to database\n", _rank);
 		return -1;
 	}
+#if 0
 	/* _rank==PROC_SIPINIT is used even when fork is disabled */
 	if (_rank==PROC_SIPINIT && db_mode!= DB_ONLY) {
 		/* if cache is used, populate domains from DB */
@@ -449,6 +451,7 @@ static int child_init(int _rank)
 			uldb_preload_attrs(ptr->d);
 		}
 	}
+#endif
 
 	return 0;
 }

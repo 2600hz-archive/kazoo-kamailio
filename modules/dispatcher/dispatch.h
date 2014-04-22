@@ -119,6 +119,7 @@ int ds_load_update(struct sip_msg *msg);
 int ds_hash_load_init(unsigned int htsize, int expire, int initexpire);
 int ds_hash_load_destroy(void);
 
+int ds_is_from_list_no_port(struct sip_msg *_m, int group, int ignore_port);
 int ds_is_from_list(struct sip_msg *_m, int group);
 /*! \brief
  * Timer for checking inactive destinations
