@@ -96,6 +96,7 @@ extern str rls_xcap_table;
 extern str db_url;
 extern int hash_size;
 extern shtable_t rls_table;
+extern int rls_min_expires;
 extern int rls_max_expires;
 extern int rls_integrated_xcap_server;
 extern int rls_events;

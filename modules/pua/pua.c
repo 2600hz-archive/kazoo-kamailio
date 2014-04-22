@@ -207,11 +207,11 @@ static int mod_init(void)
 		return -1;
 	}
 	/* verify table version  */
-	if(db_check_table_version(&pua_dbf, pua_db, &db_table, PUA_TABLE_VERSION) < 0) {
+/*	if(db_check_table_version(&pua_dbf, pua_db, &db_table, PUA_TABLE_VERSION) < 0) {
 		LM_ERR("error during table version check.\n");
 		return -1;
 	}
-
+*/
 	if (dbmode != PUA_DB_ONLY)
 	{ 
 		if(HASH_SIZE<=1)

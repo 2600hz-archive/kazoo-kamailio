@@ -46,7 +46,7 @@
 #include "notify_body.h"
 #include "pidf.h"
 
-str* agregate_xmls(str* pres_user, str* pres_domain, str** body_array, int n);
+str* agg_dialoginfo_xmls(str* pres_user, str* pres_domain, str** body_array, int n);
 extern int force_single_dialog;
 
 void free_xml_body(char* body)
@@ -66,10 +66,13 @@ str* dlginfo_agg_nbody(str* pres_user, str* pres_domain, str** body_array, int n
 	LM_DBG("[pres_user]=%.*s [pres_domain]= %.*s, [n]=%d\n",
 			pres_user->len, pres_user->s, pres_domain->len, pres_domain->s, n);
 
-	if(body_array== NULL)
-		return NULL;
+//	if(body_array== NULL)
+//		return NULL;
 
-	n_body= agregate_xmls(pres_user, pres_domain, body_array, n);
+	if(body_array== NULL)
+		n = 0;
+
+	n_body= agg_dialoginfo_xmls(pres_user, pres_domain, body_array, n);
 	LM_DBG("[n_body]=%p\n", n_body);
 	if(n_body) {
 		LM_DBG("[*n_body]=%.*s\n",
@@ -81,12 +84,12 @@ str* dlginfo_agg_nbody(str* pres_user, str* pres_domain, str** body_array, int n
 	}
 
 	xmlCleanupParser();
-    xmlMemoryDump();
+    	xmlMemoryDump();
 
 	return n_body;
 }	
 
-str* agregate_xmls(str* pres_user, str* pres_domain, str** body_array, int n)
+str* agg_dialoginfo_xmls(str* pres_user, str* pres_domain, str** body_array, int n)
 {
 	int i, j= 0;
 
@@ -95,7 +98,7 @@ str* agregate_xmls(str* pres_user, str* pres_domain, str** body_array, int n)
 	xmlNsPtr   namespace = NULL;
 
 	xmlNodePtr p_root= NULL;
-	xmlDocPtr* xml_array ;
+	xmlDocPtr* xml_array = NULL;
 	xmlNodePtr node = NULL;
 	char *state;
 	int winner_priority = -1, priority ;
@@ -106,14 +109,16 @@ str* agregate_xmls(str* pres_user, str* pres_domain, str** body_array, int n)
 	LM_DBG("[pres_user]=%.*s [pres_domain]= %.*s, [n]=%d\n",
 			pres_user->len, pres_user->s, pres_domain->len, pres_domain->s, n);
 
-	xml_array = (xmlDocPtr*)pkg_malloc( n*sizeof(xmlDocPtr));
-	if(xml_array== NULL)
+	if (n) 
 	{
-		LM_ERR("while allocating memory");
-		return NULL;
+		xml_array = (xmlDocPtr*)pkg_malloc( n*sizeof(xmlDocPtr));
+		if(xml_array== NULL)
+		{
+			LM_ERR("while allocating memory");
+			return NULL;
+		}
+		memset(xml_array, 0, n*sizeof(xmlDocPtr)) ;
 	}
-	memset(xml_array, 0, n*sizeof(xmlDocPtr)) ;
-
 	/* parse all the XML documents */
 	for(i=0; i<n; i++)
 	{
@@ -134,12 +139,14 @@ str* agregate_xmls(str* pres_user, str* pres_domain, str** body_array, int n)
 
 	} 
 
-	if(j== 0)  /* no body */
-	{
-		if(xml_array)
-			pkg_free(xml_array);
-		return NULL;
-	}
+	/*
+        if(j== 0)
+        {
+        	if(xml_array)
+        		pkg_free(xml_array);
+         		return NULL;
+        }
+	*/
 
 	/* n: number of bodies in total */
 	/* j: number of useful bodies; created XML structures */
@@ -181,7 +188,7 @@ str* agregate_xmls(str* pres_user, str* pres_domain, str** body_array, int n)
 	   use signed int as presence module stores "version" in DB as
 	   signed int) has max. 10 characters + 1 character for the sign
 	*/
-    xmlNewProp(root_node, BAD_CAST "version", BAD_CAST "00000000000");
+    xmlNewProp(root_node, BAD_CAST "version", BAD_CAST VERSION_PH);
     xmlNewProp(root_node, BAD_CAST  "state",  BAD_CAST "full" );
     xmlNewProp(root_node, BAD_CAST "entity",  BAD_CAST buf);
 
@@ -297,7 +304,6 @@ int get_dialog_state_priority(char *state) {
 
 str *dlginfo_body_setversion(subs_t *subs, str *body) {
 	char *version_start=0;
-	char version[MAX_INT_LEN + 2]; /* +2 becasue of trailing " and \0 */
 	int version_len;
 
 	if (!body) {
@@ -319,21 +325,16 @@ str *dlginfo_body_setversion(subs_t *subs, str *body) {
 
 	/* safety check for placeholder - if it is body not set by the module,
 	 * don't update the version */
-	if(strncmp(version_start, "00000000000\"", 12)!=0)
+	if(strncmp(version_start, VERSION_PH, VERSION_PH_LEN)!=0)
 		return NULL;
 
-	version_len = snprintf(version, MAX_INT_LEN + 2,"%d\"", subs->version);
-	if (version_len >= MAX_INT_LEN + 2) {
-		LM_ERR("failed to convert 'version' to string\n");
-		memcpy(version_start, "00000000000\"", 12);
-		return NULL;
-	}
-	/* Replace the placeholder 00000000000 with the version.
+	/* Replace the placeholder 0000000000 with the version.
 	 * Put the padding behind the ""
 	 */
-	LM_DBG("replace version with \"%s\n",version);
-	memcpy(version_start, version, version_len);
-	memset(version_start + version_len, ' ', 12 - version_len);
 
+	version_len = sprintf(version_start, "%d\"", subs->version);
+	memset(version_start + version_len, ' ', VERSION_PH_LEN +1 - version_len);
+
+	LM_DBG("Replaced the version with \"%.*s\n",version_len-1, version_start);
 	return NULL;
 }

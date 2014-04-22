@@ -37,6 +37,7 @@
 #include "../usrloc/usrloc.h"
 #include "../usrloc/ul_callback.h"
 #include "../../modules/tm/tm_load.h"
+#include "../../modules/presence_dialoginfo/notify_body.h"
 #include "../pua/pua.h"
 #include "pua_dialoginfo.h"
 
@@ -57,7 +58,7 @@ void print_publ(publ_info_t* p)
 
 str* build_dialoginfo(char *state, str *entity, str *peer, str *callid, 
 	unsigned int initiator, str *localtag, str *remotetag,
-	str *localtarget, str *remotetarget)
+	str *localtarget, str *remotetarget, int version)
 {
 	xmlDocPtr  doc = NULL; 
 	xmlNodePtr root_node = NULL;
@@ -73,7 +74,7 @@ str* build_dialoginfo(char *state, str *entity, str *peer, str *callid,
 		LM_ERR("entity URI '%.*s' too long, maximum=%d\n",entity->len, entity->s, MAX_URI_SIZE);
 		return NULL;
 	}
-    memcpy(buf, entity->s, entity->len);
+	memcpy(buf, entity->s, entity->len);
 	buf[entity->len]= '\0';
 
 	/* create the Publish body  */
@@ -81,23 +82,27 @@ str* build_dialoginfo(char *state, str *entity, str *peer, str *callid,
 	if(doc==0)
 		return NULL;
 
-    root_node = xmlNewNode(NULL, BAD_CAST "dialog-info");
+	root_node = xmlNewNode(NULL, BAD_CAST "dialog-info");
 	if(root_node==0)
 		goto error;
     
 	xmlDocSetRootElement(doc, root_node);
 
-    xmlNewProp(root_node, BAD_CAST "xmlns",
+	xmlNewProp(root_node, BAD_CAST "xmlns",
 			BAD_CAST "urn:ietf:params:xml:ns:dialog-info");
 	/* we set the version to 0 but it should be set to the correct value
        in the pua module */
-	xmlNewProp(root_node, BAD_CAST "version",
-			BAD_CAST "0");
+
+	xmlNewProp(root_node, BAD_CAST "version", BAD_CAST VERSION_PH);
 	xmlNewProp(root_node, BAD_CAST  "state",
 			BAD_CAST "full" );
 	xmlNewProp(root_node, BAD_CAST "entity", 
 			BAD_CAST buf);
 
+	if (!callid) {
+		LM_DBG("Empty dialog-info\n");
+		goto done;
+	}
 	/* RFC 3245 differs between id and call-id. For example if a call
 	   is forked and 2 early dialogs are established, we should send 2
 	    PUBLISH requests, both have the same call-id but different id.
@@ -119,7 +124,7 @@ str* build_dialoginfo(char *state, str *entity, str *peer, str *callid,
 		LM_ERR("call-id '%.*s' too long, maximum=%d\n", callid->len, callid->s, MAX_URI_SIZE);
 		return NULL;
 	}
-    memcpy(buf, callid->s, callid->len);
+	memcpy(buf, callid->s, callid->len);
 	buf[callid->len]= '\0';
 
 	xmlNewProp(dialog_node, BAD_CAST "id", BAD_CAST buf);
@@ -174,7 +179,7 @@ str* build_dialoginfo(char *state, str *entity, str *peer, str *callid,
 			LM_ERR("peer '%.*s' too long, maximum=%d\n", peer->len, peer->s, MAX_URI_SIZE);
 			return NULL;
 		}
-    	memcpy(buf, peer->s, peer->len);
+		memcpy(buf, peer->s, peer->len);
 		buf[peer->len]= '\0';
 
 		tag_node = xmlNewChild(remote_node, NULL, BAD_CAST "identity", BAD_CAST buf) ;
@@ -207,7 +212,7 @@ str* build_dialoginfo(char *state, str *entity, str *peer, str *callid,
 			LM_ERR("entity '%.*s' too long, maximum=%d\n", entity->len, entity->s, MAX_URI_SIZE);
 			return NULL;
 		}
-    	memcpy(buf, entity->s, entity->len);
+		memcpy(buf, entity->s, entity->len);
 		buf[entity->len]= '\0';
 
 		tag_node = xmlNewChild(local_node, NULL, BAD_CAST "identity", BAD_CAST buf) ;
@@ -229,6 +234,7 @@ str* build_dialoginfo(char *state, str *entity, str *peer, str *callid,
 		xmlNewProp(tag_node, BAD_CAST "uri", BAD_CAST buf);
 	}
 
+done:
 	/* create the body */
 	body = (str*)pkg_malloc(sizeof(str));
 	if(body == NULL)
@@ -260,6 +266,76 @@ error:
 	return NULL;
 }	
 
+/* {"From-User": "uri", "To-User": "uri", "New-State": "state", "Call-ID": "callid", 
+ *  "From-Tag": "tag", "To-tag": "tag"}
+ * {"Replaces": "", "Refered-By": ""} */
+
+static str from_user_col = str_init("from_user");
+static str to_user_col   = str_init("to_user");
+static str state_col     = str_init("state");
+static str callid_col    = str_init("callid");
+static str from_tag_col = str_init("from_tag");
+static str to_tag_col   = str_init("to_tag");
+
+void db_dialog_publish(char *state, str *from_user, str *to_user, str *callid,
+	str *from_tag, str *to_tag)
+{
+	db_key_t key[6];
+	db_val_t val[6];
+	int n = 0;	
+
+	memset(val, 0, 6*sizeof(db_val_t));
+
+	key[n] = &from_user_col;
+	val[n].type = DB1_STR;
+	val[n].val.str_val = *from_user;
+ 	n++;
+
+	key[n] = &to_user_col;
+	val[n].type = DB1_STR;
+	val[n].val.str_val = *to_user;
+ 	n++;
+ 
+	key[n] = &state_col;
+	val[n].type = DB1_STR;
+	val[n].val.str_val.s = state;
+	val[n].val.str_val.len = strlen(state);
+ 	n++;
+ 
+	key[n] = &callid_col;
+	val[n].type = DB1_STR;
+	val[n].val.str_val = *callid;
+ 	n++;
+ 
+	key[n] = &from_tag_col;
+	val[n].type = DB1_STR;
+	if (from_tag) {
+		val[n].val.str_val = *from_tag;
+	} else {
+		val[n].val.str_val.s = 0;
+		val[n].val.str_val.len = 0;
+	}
+ 	n++;
+
+	key[n] = &to_tag_col;
+	val[n].type = DB1_STR;
+	if (to_tag) {
+		val[n].val.str_val = *to_tag;
+	} else {
+		val[n].val.str_val.s = 0;
+		val[n].val.str_val.len = 0;
+	}
+ 	n++;
+	
+	if(pua_dialoginfo_dbf.use_table(pua_dialoginfo_db, &dialoginfo_db_table)< 0) {
+		LM_ERR("use table failed\n");
+	}
+
+	if (pua_dialoginfo_dbf.insert_update(pua_dialoginfo_db, key, val, n) < 0) {
+		LM_ERR("Insert update failed\n");
+	}
+}
+
 void dialog_publish(char *state, str* ruri, str *entity, str *peer, str *callid,
 	unsigned int initiator, unsigned int lifetime, str *localtag, str *remotetag,
 	str *localtarget, str *remotetarget, unsigned short do_pubruri_localcheck)
@@ -290,7 +366,7 @@ void dialog_publish(char *state, str* ruri, str *entity, str *peer, str *callid,
 	content_type.s= "application/dialog-info+xml";
 	content_type.len= 27;
 
-	body= build_dialoginfo(state, entity, peer, callid, initiator, localtag, remotetag, localtarget, remotetarget);
+	body= build_dialoginfo(state, entity, peer, callid, initiator, localtag, remotetag, localtarget, remotetarget, 0);
 	if(body == NULL || body->s == NULL)
 		goto error;
 	
@@ -377,14 +453,18 @@ error:
 }
 
 
-
 void dialog_publish_multi(char *state, struct str_list* ruris, str *entity, str *peer, str *callid,
 	unsigned int initiator, unsigned int lifetime, str *localtag, str *remotetag,
 	str *localtarget, str *remotetarget, unsigned short do_pubruri_localcheck) {
 
 	while(ruris) {
 		LM_INFO("CALLING dialog_publish for URI %.*s\n",ruris->s.len, ruris->s.s);
-		dialog_publish(state,&(ruris->s),entity,peer,callid,initiator,lifetime,localtag,remotetag,localtarget,remotetarget,do_pubruri_localcheck);
+		if ( pua_dialoginfo_db ) {
+			if (initiator)
+				db_dialog_publish(state, entity, peer, callid, localtag, remotetag);
+		} else {
+			dialog_publish(state,&(ruris->s),entity,peer,callid,initiator,lifetime,localtag,remotetag,localtarget,remotetarget,do_pubruri_localcheck);
+		}
 		ruris=ruris->next;
 	}
 

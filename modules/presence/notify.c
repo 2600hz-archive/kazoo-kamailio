@@ -1541,6 +1541,14 @@ int send_notify_request(subs_t* subs, subs_t * watcher_subs,
 						notify_body= final_body;
 					}
 				}
+				if (notify_body && subs->event->aux_body_processing) {
+					final_body = subs->event->aux_body_processing(subs, notify_body);
+					if(final_body) {
+						xmlFree(notify_body->s);
+						pkg_free(notify_body);
+						notify_body= final_body;
+					}
+				}
 			}
 		}
 	}
@@ -3011,3 +3019,89 @@ void pres_timer_send_notify(unsigned int ticks, void *param)
 		return;
 	}
 }
+
+int pres_notify_watchers(str* pres_uri, str* event_str, str* body)
+{
+	event_t m_ev;
+	pres_ev_t* event;
+	struct sip_uri uri;
+	str *aux_body = NULL;
+	subs_t* subs_array= NULL, *s= NULL;
+	int ret_code= -1;
+	str user, domain;
+	str* notify_body = NULL;
+
+	memset(&m_ev, 0, sizeof(event_t));
+
+        LM_INFO("pres_notify_watchers %s %s %s\n", pres_uri->s, event_str->s, body->s);
+
+	if (event_parser(event_str->s, event_str->len, &m_ev) < 0) {
+		LM_ERR("failed to parse event\n");
+		return -1;
+	}
+
+	event= search_event(&m_ev);
+	if(event== NULL) {
+		LM_ERR("Event not supported\n");
+		return -1;
+	}
+	if (parse_uri(pres_uri->s, pres_uri->len, &uri) < 0) {
+		LM_ERR("Wrong formated uri\n");
+		return -1;
+	}
+	user = uri.user;
+	domain = uri.host;
+
+	subs_array= get_subs_dialog(pres_uri, event , NULL);
+	if(subs_array == NULL)
+	{
+		LM_DBG("Could not find subs_dialog\n");
+		ret_code= 0;
+		goto done;
+	}
+
+	/* if the event does not require aggregation - we have the final body */
+	if(body == NULL)
+	{	
+		notify_body = get_p_notify_body(*pres_uri, event , NULL, NULL);
+		if(notify_body == NULL)
+		{
+			LM_ERR("Could not get the notify_body\n");
+			goto done;
+		}
+	}
+
+	s= subs_array;
+	while(s)
+	{
+		if (event->aux_body_processing) {
+			LM_INFO("aux_body_processing defined\n");
+		      aux_body = event->aux_body_processing(s, notify_body?notify_body:body);
+//			LM_INFO("After auxiliary processing the body is [%.*s]\n", aux_body->len, aux_body->s);
+			LM_INFO("After auxiliary processing the body is [%.*s]\n", body->len, body->s);
+		}
+
+
+		if(notify(s, NULL, aux_body?aux_body:(notify_body?notify_body:body), 0)< 0 )
+		{
+			LM_ERR("Could not send notify for %.*s\n",
+					event->name.len, event->name.s);
+		}
+
+		if(aux_body!=NULL) {
+			if(aux_body->s)	{
+				event->aux_free_body(aux_body->s);
+			}
+			pkg_free(aux_body);
+		}
+		s= s->next;
+	}
+
+	ret_code= 0;
+
+done:
+	free_subs_list(subs_array, PKG_MEM_TYPE, 0);
+	free_notify_body(notify_body, event);	
+	return ret_code;
+}
+

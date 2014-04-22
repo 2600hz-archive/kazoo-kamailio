@@ -26,8 +26,12 @@
 #ifndef _PUA_DLGINFO_H
 #define _PUA_DLGINFO_H
 #include "../pua/pua_bind.h"
+#include "../../lib/srdb1/db.h"
 
 extern send_publish_t pua_send_publish;
+extern str dialoginfo_db_table;
+extern db1_con_t *pua_dialoginfo_db;
+extern db_func_t pua_dialoginfo_dbf;
 
 void dialog_publish_multi(char *state, struct str_list* ruris, str *entity, str *peer, str *callid,
 	unsigned int initiator, unsigned int lifetime, str *localtag, str *remotetag,
@@ -53,4 +57,7 @@ struct dlginfo_cell {
 void free_dlginfo_cell(void *param);
 void free_str_list_all(struct str_list * del_current);
 
+str* build_dialoginfo(char *state, str *entity, str *peer, str *callid, 
+	unsigned int initiator, str *localtag, str *remotetag,
+	str *localtarget, str *remotetarget, int version);
 #endif
