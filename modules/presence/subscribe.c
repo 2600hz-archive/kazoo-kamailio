@@ -619,12 +619,12 @@ int update_subscription(struct sip_msg* msg, subs_t* subs, int to_tag_gen,
 		LM_DBG("subscription not in dialog\n");
 		if(subs->expires!= 0)
 		{
+			subs->version = 1;
 			if(subs_dbmode != DB_ONLY)
 			{
 				LM_DBG("inserting in shtable\n");
 				subs->db_flag = (subs_dbmode==WRITE_THROUGH)?WTHROUGHDB_FLAG:INSERTDB_FLAG;
 				hash_code= core_hash(&subs->pres_uri, &subs->event->name, shtable_size);
-				subs->version = 0;
 				if(insert_shtable(subs_htable,hash_code,subs)< 0)
 				{
 					LM_ERR("failed to insert new record in subs htable\n");
@@ -634,7 +634,6 @@ int update_subscription(struct sip_msg* msg, subs_t* subs, int to_tag_gen,
 
 			if(subs_dbmode == DB_ONLY || subs_dbmode == WRITE_THROUGH)
 			{
-				subs->version = 1;
 				if(insert_subs_db(subs, REMOTE_TYPE) < 0)
 				{
 					LM_ERR("failed to insert new record in database\n");
@@ -849,7 +848,7 @@ int handle_subscribe(struct sip_msg* msg, str watcher_user, str watcher_domain)
 		ev_param= ev_param->next;
 	}
 	
-	if(extract_sdialog_info(&subs, msg, max_expires, &to_tag_gen,
+	if(extract_sdialog_info(&subs, msg, min_expires, max_expires, &to_tag_gen,
 				server_address, watcher_user, watcher_domain)< 0)
 	{
 		LM_ERR("failed to extract dialog information\n");
@@ -1074,9 +1073,9 @@ error:
 }
 
 
-int extract_sdialog_info(subs_t* subs,struct sip_msg* msg, int mexp,
-		int* to_tag_gen, str scontact, str watcher_user,
-		str watcher_domain)
+int extract_sdialog_info(subs_t* subs,struct sip_msg* msg, int miexp,
+                int mexp, int* to_tag_gen, str scontact,
+                str watcher_user, str watcher_domain)
 {
 	str rec_route= {0, 0};
 	int rt  = 0;
@@ -1105,6 +1104,8 @@ int extract_sdialog_info(subs_t* subs,struct sip_msg* msg, int mexp,
 	}
 	if(lexpire > mexp)
 		lexpire = mexp;
+	if (lexpire && miexp && lexpire < miexp)
+                lexpire = miexp;
 
 	subs->expires = lexpire;
 
@@ -1384,7 +1385,7 @@ found_rec:
 	if(subs->pres_uri.s == NULL)
 		subs->pres_uri= pres_uri;
 
-	subs->version = s->version + 1;
+	subs->version = s->version;
 	subs->status= s->status;
 	if(s->reason.s && s->reason.len)
 	{
@@ -1552,7 +1553,7 @@ int get_database_info(struct sip_msg* msg, subs_t* subs, int* reply_code, str* r
 	}
 
 	subs->local_cseq= row_vals[local_cseq_col].val.int_val + 1;
-	subs->version= row_vals[version_col].val.int_val + 1;
+	subs->version= row_vals[version_col].val.int_val;
 
 	if(!EVENT_DIALOG_SLA(subs->event->evp))
 	{

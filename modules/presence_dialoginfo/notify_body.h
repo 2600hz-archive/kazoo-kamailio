@@ -37,10 +37,17 @@
 #ifndef _NBODY_H_
 #define _NBODY_H_
 
+#include "../../str.h"
+#include "../presence/subscribe.h"
+
+#define VERSION_PH "0000000000"
+#define VERSION_PH_LEN sizeof(VERSION_PH) - 1
+
 str* dlginfo_agg_nbody(str* pres_user, str* pres_domain, str** body_array,
 		int n, int off_index);
 str* dlginfo_body_setversion(subs_t *subs, str* body);
 void free_xml_body(char* body);
 int get_dialog_state_priority(char *state);
+str* agg_dialoginfo_xmls(str* pres_user, str* pres_domain, str** body_array, int n);
 
 #endif

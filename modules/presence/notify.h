@@ -124,4 +124,7 @@ char* get_status_str(int flag);
 str *get_p_notify_body(str pres_uri, pres_ev_t *event, str *etag, str *contact);
 void free_notify_body(str *body, pres_ev_t *ev);
 void pres_timer_send_notify(unsigned int ticks, void *param);
+
+int pres_notify_watchers(str* user_uri, str* event, str* body);
+
 #endif

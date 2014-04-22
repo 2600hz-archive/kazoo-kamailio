@@ -2213,7 +2213,7 @@ int ds_print_list(FILE *fout)
 /* Checks, if the request (sip_msg *_m) comes from a host in a group
  * (group-id or -1 for all groups)
  */
-int ds_is_from_list(struct sip_msg *_m, int group)
+int ds_is_from_list_no_port(struct sip_msg *_m, int group, int ignore_port)
 {
 	pv_value_t val;
 	ds_set_t *list;
@@ -2231,7 +2231,7 @@ int ds_is_from_list(struct sip_msg *_m, int group)
 			{
 				// LM_ERR("port no: %d (%d)\n", list->dlist[j].port, j);
 				if (ip_addr_cmp(&_m->rcv.src_ip, &list->dlist[j].ip_address)
-						&& (list->dlist[j].port==0
+						&& (ignore_port || list->dlist[j].port==0
 							|| _m->rcv.src_port == list->dlist[j].port))
 				{
 					if(group==-1 && ds_setid_pvname.s!=0)
@@ -2252,6 +2252,10 @@ int ds_is_from_list(struct sip_msg *_m, int group)
 	return -1;
 }
 
+int ds_is_from_list(struct sip_msg *_m, int group)
+{
+	return ds_is_from_list_no_port(_m, group, 0);
+}
 
 int ds_print_mi_list(struct mi_node* rpl)
 {

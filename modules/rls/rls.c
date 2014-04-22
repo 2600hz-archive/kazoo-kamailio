@@ -136,6 +136,7 @@ update_db_subs_t pres_update_db_subs_timer;
 extract_sdialog_info_t pres_extract_sdialog_info;
 int rls_events= EVENT_PRESENCE;
 int to_presence_code = 1;
+int rls_min_expires = 0;
 int rls_max_expires = 7200;
 int rls_reload_db_subs = 0;
 int rls_max_notify_body_len = 0;
@@ -238,6 +239,7 @@ static param_export_t params[]={
 	{ "notifier_processes",     INT_PARAM,   &rls_notifier_processes         },
 	{ "clean_period",           INT_PARAM,   &clean_period                   },
 	{ "rlpres_clean_period",    INT_PARAM,   &rlpres_clean_period            },
+	{ "min_expires",            INT_PARAM,   &rls_min_expires                },
 	{ "max_expires",            INT_PARAM,   &rls_max_expires                },
 	{ "hash_size",              INT_PARAM,   &hash_size                      },
 	{ "integrated_xcap_server", INT_PARAM,   &rls_integrated_xcap_server     },

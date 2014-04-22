@@ -46,10 +46,12 @@
 #include "../../str_list.h"
 #include "../../mem/mem.h"
 #include "../../pt.h"
+#include "../../lib/srdb1/db.h"
 #include "../dialog/dlg_load.h"
 #include "../dialog/dlg_hash.h"
 #include "../pua/pua_bind.h"
 #include "pua_dialoginfo.h"
+#include "bind_dialoginfo.h"
 
 MODULE_VERSION
 
@@ -92,16 +94,23 @@ int send_publish_flag = DEF_SEND_PUBLISH_FLAG;
 int use_pubruri_avps    = DEF_USE_PUBRURI_AVPS;
 char * pubruri_caller_avp  = DEF_PUBRURI_CALLER_AVP;
 char * pubruri_callee_avp  = DEF_PUBRURI_CALLEE_AVP;
-
+str db_url = {0, 0};
+str dialoginfo_db_table = str_init("dialoginfo");
+db1_con_t *pua_dialoginfo_db = NULL;
+db_func_t pua_dialoginfo_dbf;
+int library_mode = 0; 
 
 send_publish_t pua_send_publish;
 /** module functions */
 
 static int mod_init(void);
+static int child_init(int rank);
+static void mod_destroy(void);
 
 
 static cmd_export_t cmds[]=
 {
+	{"bind_pua_dialoginfo", (cmd_function)bind_pua_dialoginfo, 1, 0, 0, 0},
 	{0, 0, 0, 0, 0, 0} 
 };
 
@@ -116,6 +125,8 @@ static param_export_t params[]={
 	{"use_pubruri_avps",    INT_PARAM, &use_pubruri_avps },
 	{"pubruri_caller_avp",  STR_PARAM, &pubruri_caller_avp },
 	{"pubruri_callee_avp",  STR_PARAM, &pubruri_callee_avp },
+	{"db_url",              STR_PARAM, &db_url.s},
+	{"library_mode",        INT_PARAM, &library_mode},
 	{0, 0, 0 }
 };
 
@@ -130,8 +141,8 @@ struct module_exports exports= {
 	0,						/* extra processes */
 	mod_init,				/* module initialization function */
 	0,						/* response handling function */
-	0,						/* destroy function */
-	NULL					/* per-child init function */
+	mod_destroy,				/* destroy function */
+	child_init				/* per-child init function */
 };
 	
 
@@ -479,10 +490,12 @@ __dialog_created(struct dlg_cell *dlg, int type, struct dlg_cb_params *_params)
 static int mod_init(void)
 {
 	bind_pua_t bind_pua;
-
 	str s;
 	pv_spec_t avp_spec;
 	
+	if ( library_mode )
+		return 0;
+
 	bind_pua= (bind_pua_t)find_export("bind_pua", 1,0);
 	if (!bind_pua)
 	{
@@ -542,6 +555,15 @@ static int mod_init(void)
 
 	}
 
+	db_url.len = db_url.s ? strlen(db_url.s) : 0;
+	dialoginfo_db_table.len = dialoginfo_db_table.s ? strlen(dialoginfo_db_table.s) : 0;
+
+	/* binding to database module  */
+	if (db_url.len && db_bind_mod(&db_url, &pua_dialoginfo_dbf)) {
+		LM_ERR("Database module not found\n");
+		return -1;
+	}
+
 	return 0;
 }
 
@@ -571,4 +593,52 @@ void free_str_list_all(struct str_list * del_current) {
 		del_current=del_next;
 	}
 
+}
+
+int bind_pua_dialoginfo(pua_dialoginfo_api_t* api)
+{
+	if (!api) {
+		LM_ERR("Invalid parameter value\n");
+		return -1;
+	}
+	
+	api->build_dialoginfo = build_dialoginfo;
+	return 0;
+}
+
+static int child_init(int rank)
+{
+	if ( library_mode )
+		return 0;
+	
+	if (rank==PROC_INIT || rank==PROC_MAIN || rank==PROC_TCP_MAIN)
+		return 0; /* do nothing for the main process */
+
+	if (pua_dialoginfo_dbf.init==0) {
+		LM_INFO("database not bound\n");
+		return 0;
+	}
+	/* In DB only mode do not pool the connections where possible. */
+	if ( (pua_dialoginfo_db = pua_dialoginfo_dbf.init(&db_url)) == NULL) {
+		LM_ERR("Child %d: connecting to database failed\n", rank);
+		return -1;
+	}
+	if (pua_dialoginfo_dbf.use_table(pua_dialoginfo_db, &dialoginfo_db_table) < 0) {
+		LM_ERR("child %d: Error in use_table pua\n", rank);
+		return -1;
+	}
+
+	LM_DBG("child %d: Database connection opened successfully\n", rank);
+
+	return 0;
+}
+
+
+static void mod_destroy(void)
+{
+	if ( library_mode )
+		return;
+	
+	if (pua_dialoginfo_db) 
+		pua_dialoginfo_dbf.close(pua_dialoginfo_db);
 }

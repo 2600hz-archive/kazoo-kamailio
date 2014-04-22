@@ -595,9 +595,10 @@ int rls_handle_subscribe(struct sip_msg* msg, str watcher_user, str watcher_doma
 	}
 
 	/* extract dialog information from message headers */
-	if(pres_extract_sdialog_info(&subs, msg, rls_max_expires,
-				&to_tag_gen, rls_server_address,
-				watcher_user, watcher_domain)<0)
+	if(pres_extract_sdialog_info(&subs, msg, rls_min_expires,
+                                rls_max_expires, &to_tag_gen,
+                                rls_server_address, watcher_user,
+                                watcher_domain)<0)
 	{
 		LM_ERR("bad subscribe request\n");
 		goto error;

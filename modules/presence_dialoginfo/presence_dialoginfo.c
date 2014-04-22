@@ -40,6 +40,8 @@
 #include "../presence/bind_presence.h"
 #include "add_events.h"
 #include "presence_dialoginfo.h"
+#include "notify_body.h"
+#include "bind_pres_dialoginfo.h"
 
 MODULE_VERSION
 
@@ -55,6 +57,7 @@ int force_single_dialog = 0;
 /* module exported commands */
 static cmd_export_t cmds[] =
 {
+	{"bind_pres_dialoginfo", (cmd_function)bind_pres_dialoginfo, 1, 0, 0, 0},
     {0,	0, 0, 0, 0, 0}
 };
 
@@ -110,3 +113,16 @@ static int mod_init(void)
     
     return 0;
 }
+
+int bind_pres_dialoginfo(pres_dialoginfo_api_t* api)
+{
+	if (!api) {
+		LM_ERR("Invalid parameter value\n");
+		return -1;
+	}
+	
+	api->agg_dialoginfo = agg_dialoginfo_xmls;
+	return 0;
+}
+
+

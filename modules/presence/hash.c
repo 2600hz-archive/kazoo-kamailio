@@ -352,7 +352,9 @@ int update_shtable(shtable_t htable,unsigned int hash_code,
 	else
 	{
 		subs->local_cseq = ++s->local_cseq;
-		subs->version = ++s->version;
+		subs->version = s->version;
+		s->version++;
+		LM_DBG("Version increased to %d\n", s->version);
 	}
 	
 	if(strncmp(s->contact.s, subs->contact.s, subs->contact.len))

@@ -72,7 +72,9 @@ int bind_presence(presence_api_t* api)
 	api->handle_publish= handle_publish;
 	api->handle_subscribe0= handle_subscribe0;
 	api->handle_subscribe= handle_subscribe;
+	api->notify_watchers = pres_notify_watchers;
 	return 0;
+
 }
 
 

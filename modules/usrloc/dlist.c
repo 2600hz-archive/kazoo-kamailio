@@ -629,6 +629,7 @@ int register_udomain(const char* _n, udomain_t** _d)
 	/* Test tables from database if we are gonna
 	 * to use database
 	 */
+#if 0
 	if (db_mode != NO_DB) {
 		con = ul_dbf.init(&db_url);
 		if (!con) {
@@ -648,7 +649,7 @@ int register_udomain(const char* _n, udomain_t** _d)
 
 		ul_dbf.close(con);
 	}
-
+#endif
 	d->next = root;
 	root = d;
 	
