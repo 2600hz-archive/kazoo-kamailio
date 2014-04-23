@@ -139,16 +139,16 @@ int dbk_initialize_presence()
     return -1;
   }
 
-	/* bind to pua module */
-	bind_pua_t bind_pua= (bind_pua_t)find_export("bind_pua", 1,0);
-	if (!bind_pua) {
-		LM_ERR("Can't find bind pua\n");
-		return -1;
-	}
-	if (bind_pua(&pua_api) < 0) {
-		LM_ERR("Can't bind to pua api\n");
-		return -1;
-	}
+  /* bind to pua module */
+  bind_pua_t bind_pua= (bind_pua_t)find_export("bind_pua", 1,0);
+  if (!bind_pua) {
+	LM_ERR("Can't find bind pua\n");
+	return -1;
+  }
+  if (bind_pua(&pua_api) < 0) {
+	LM_ERR("Can't bind to pua api\n");
+	return -1;
+  }
 
   if ( dbk_initialize_pres_htable() < 0) {
     LM_ERR("Failed to initialize presence htable\n");
