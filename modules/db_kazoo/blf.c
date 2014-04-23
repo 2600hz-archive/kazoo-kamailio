@@ -847,30 +847,6 @@ str* dbk_phtable_update(str* local_user, str* remote_user, str* callid,
   return body;
 }
 
-int dbk_pres_update_and_notify(str* local_user, str* remote_user, str* callid,
-                               str* localtag, str* remotetag, str* state, int initiator) {
-
-  str event = str_init("dialog");
-  str* body;
-
-  /* update in htable */
-  if ((body = dbk_phtable_update(local_user, remote_user, callid, localtag,
-                                 remotetag, state, initiator)) == 0) {
-    LM_ERR("Failed to update in htable\n");
-    return -1;
-  }
-
-  /* call refresh_watchers from presence */
-  if (presence_api.notify_watchers(local_user, &event, body) < 0) {
-    LM_ERR("Failed to notify watchers\n");
-    goto error;
-  }
-  dbk_free_xml(body);
-  return 0;
- error:
-  dbk_free_xml(body);
-  return -1;
-}
 
 
 void free_mwi_body(str* body)
@@ -1105,44 +1081,6 @@ ret_current_dialog:
 }
 
 
-int dbk_pres_update_and_notify_mwi(str* local_user, str* remote_user, str* callid,
-	str* localtag, str* remotetag, str* mwi_account, str* mwi_waiting, str* mwi_new, str* mwi_saved, str* mwi_urgent, str* mwi_urgent_saved) {
-
-	str event = str_init("message-summary");
-	str* body;
-
-	/* update in htable */
-	if ((body = dbk_phtable_update_mwi(local_user, remote_user, callid, localtag,
-					remotetag,  mwi_account,  mwi_waiting,  mwi_new,  mwi_saved,  mwi_urgent,  mwi_urgent_saved)) == 0) {
-		LM_ERR("Failed to update in htable\n");
-		return -1;
-	}
-
-	/* call refresh_watchers from presence */
-
-       if (presence_api.notify_watchers(local_user, &event, body) < 0) {
-		LM_ERR("Failed to notify watchers\n");
-		goto error;
-	}
-
-      /* notify via publish */
-      /*
-       publ_info_t publ;
-       memset(&publ, 0, sizeof(publ_info_t));
-	publ.pres_uri= remote_user;
-	publ.body= body;
-	publ.event= MSGSUM_EVENT;
-       publ.expires = 180;
-	pua_api.send_publish(&publ);
-      */
-
-
-	free_mwi_body(body);
-	return 0;
-error:
-	free_mwi_body(body);
-	return -1;
-}
 
 
 
