@@ -930,11 +930,11 @@ int dbk_rmq_wait_for_data(amqp_connection_state_t conn)
     return -1;
   }
   else if (ret == 0) {
-    LM_INFO("select: timeout\n");
+    LM_DBG("select: timeout\n");
     return -1;
   }
   if (FD_ISSET(sock, &read_flags)) {
-    LM_INFO("select: data received\n");
+    LM_DBG("select: data received\n");
   }
   
   return 0;
