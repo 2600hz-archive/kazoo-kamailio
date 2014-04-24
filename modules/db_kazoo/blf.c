@@ -182,10 +182,10 @@ void dbk_start_presence_rmqp_consumer_processes(struct db_id* id)
       return;
     } else if(newpid == 0) {
       // child - this will loop forever
-      LM_INFO("Created dbk AMQP presence worker %d\n", newpid);
+      LM_DBG("Created dbk AMQP presence worker %d\n", newpid);
       rmqp_consumer_loop(id);
     } else {
-      LM_INFO("Created dbk AMQP presence worker %d\n", newpid);
+      LM_DBG("Created dbk AMQP presence worker %d\n", newpid);
     }
   }
 }
@@ -323,7 +323,7 @@ void rmqp_consumer_loop(struct db_id* id)
 
         body_received += frame.payload.body_fragment.len;
 
-        LM_INFO("%.*s\n", (int)frame.payload.body_fragment.len,
+        LM_DBG("%.*s\n", (int)frame.payload.body_fragment.len,
                 (char*)frame.payload.body_fragment.bytes);
       }
 
@@ -650,7 +650,7 @@ str* dbk_phtable_update(str* local_user, str* remote_user, str* callid,
   if (pu == NULL) {
     lock_release(&dbk_phtable[hash_code].lock);
     if (!terminated) {
-      LM_INFO("No record found for %.*s/%.*s, add with initial state %.*s\n"
+      LM_DBG("No record found for %.*s/%.*s, add with initial state %.*s\n"
               ,local_user->len, local_user->s
               ,remote_user->len, remote_user->s
               ,state->len, state->s);
@@ -666,7 +666,7 @@ str* dbk_phtable_update(str* local_user, str* remote_user, str* callid,
       }
       return body;
     }
-    LM_INFO("No record found for %.*s/%.*s and state terminated, do nothing\n"
+    LM_DBG("No record found for %.*s/%.*s and state terminated, do nothing\n"
             ,local_user->len, local_user->s
             ,remote_user->len, remote_user->s);
     return pua_dialoginfo_api.build_dialoginfo(state->s, local_user, remote_user, callid,
@@ -684,7 +684,7 @@ str* dbk_phtable_update(str* local_user, str* remote_user, str* callid,
     }
     lock_release(&dbk_phtable[hash_code].lock);
     if (!terminated) {
-      LM_INFO("Dialog %.*s not found for %.*s/%.*s, add with initial state %.*s\n"
+      LM_DBG("Dialog %.*s not found for %.*s/%.*s, add with initial state %.*s\n"
               ,callid->len, callid->s
               ,local_user->len, local_user->s
               ,remote_user->len, remote_user->s
@@ -716,7 +716,7 @@ str* dbk_phtable_update(str* local_user, str* remote_user, str* callid,
       pu->pd = pd;
       lock_release(&dbk_phtable[hash_code].lock);
     } else { /* terminated */
-      LM_INFO("Dialog %.*s not found for %.*s/%.*s, building terminated body\n"
+      LM_DBG("Dialog %.*s not found for %.*s/%.*s, building terminated body\n"
               ,callid->len, callid->s
               ,local_user->len, local_user->s
               ,remote_user->len, remote_user->s);
@@ -734,7 +734,7 @@ str* dbk_phtable_update(str* local_user, str* remote_user, str* callid,
   }
 
   if (!terminated) {
-    LM_INFO("Found record %.*s/%.*s and matching dialog %.*s, update the state %.*s\n"
+    LM_DBG("Found record %.*s/%.*s and matching dialog %.*s, update the state %.*s\n"
             ,local_user->len, local_user->s
             ,remote_user->len, remote_user->s
             ,callid->len, callid->s
@@ -755,7 +755,7 @@ str* dbk_phtable_update(str* local_user, str* remote_user, str* callid,
     pu = dbk_pres_search_pu(hash_code, local_user, 0, pu);
     if (pu == NULL) { /* pres user deleted in the meantime (my dialog ended) */
       lock_release(&dbk_phtable[hash_code].lock);
-      LM_INFO("Dialog %.*s deleted in the meantime (my dialog must have ended)\n"
+      LM_DBG("Dialog %.*s deleted in the meantime (my dialog must have ended)\n"
               ,callid->len, callid->s);
       dbk_free_xml(body);
       body = NULL;
@@ -765,7 +765,7 @@ str* dbk_phtable_update(str* local_user, str* remote_user, str* callid,
     pd = dbk_pres_pu_search_pd(pu, callid, localtag, remotetag, &pd_prev, pd);
     if (pd == NULL) {
       lock_release(&dbk_phtable[hash_code].lock);
-      LM_INFO("Dialog %.*s deleted in the meantime (my dialog must have ended)\n"
+      LM_DBG("Dialog %.*s deleted in the meantime (my dialog must have ended)\n"
               ,callid->len, callid->s);
       dbk_free_xml(body);
       body = NULL;
@@ -789,9 +789,9 @@ str* dbk_phtable_update(str* local_user, str* remote_user, str* callid,
     }
     lock_release(&dbk_phtable[hash_code].lock);
   } else {
-    LM_INFO("pd_prev: %p  pd->next: %p\n", pd_prev, pd->next);
+    LM_DBG("pd_prev: %p  pd->next: %p\n", pd_prev, pd->next);
     if (pd_prev == NULL && pd->next == NULL) { // there is no other dialog record
-      LM_INFO("Found record %.*s/%.*s and matching dialog %.*s, no remaining dialogs removing pu record\n"
+      LM_DBG("Found record %.*s/%.*s and matching dialog %.*s, no remaining dialogs removing pu record\n"
               ,local_user->len, local_user->s
               ,remote_user->len, remote_user->s
               ,callid->len, callid->s);
@@ -808,7 +808,7 @@ str* dbk_phtable_update(str* local_user, str* remote_user, str* callid,
                                                  initiator, localtag, remotetag, 0 , 0, 0);
       goto ret_current_dialog;
     } else {
-      LM_INFO("Found record %.*s/%.*s and matching dialog %.*s, other dialogs remain\n"
+      LM_DBG("Found record %.*s/%.*s and matching dialog %.*s, other dialogs remain\n"
               ,local_user->len, local_user->s
               ,remote_user->len, remote_user->s
               ,callid->len, callid->s);
@@ -872,7 +872,7 @@ str* mwi_body(str* mwi_account, str* mwi_waiting, str* mwi_new, str* mwi_saved, 
               );
        int x = strlen(mwi_body_buffer);
 
-       LM_INFO("message-summary body = %s",mwi_body_buffer);
+       LM_DBG("message-summary body = %s",mwi_body_buffer);
 
        str* body = (str*)pkg_malloc(sizeof(str));
 
@@ -884,7 +884,7 @@ str* mwi_body(str* mwi_account, str* mwi_waiting, str* mwi_new, str* mwi_saved, 
 	memcpy(body->s, mwi_body_buffer, x * sizeof(char));
 	body->len = x;
 
-       LM_INFO("message-summary body-> = %.*s",body->len, body->s);
+       LM_DBG("message-summary body-> = %.*s",body->len, body->s);
 
        return body;
 }
@@ -902,7 +902,7 @@ str* dbk_phtable_update_mwi(str* local_user, str* remote_user, str* callid,
 	int i;
 
 	if (terminated) {
-		LM_INFO("Update for terminated state\n");
+		LM_DBG("Update for terminated state\n");
 	}
 
 	lock_get(&dbk_phtable[hash_code].lock);
@@ -912,19 +912,19 @@ str* dbk_phtable_update_mwi(str* local_user, str* remote_user, str* callid,
 	if (pu == NULL) {
 		lock_release(&dbk_phtable[hash_code].lock);
 		if (!terminated) {
-			LM_INFO("No record found for %s, created a new one\n", local_user->s);
+			LM_DBG("No record found for %s, created a new one\n", local_user->s);
 			if ( (body = mwi_body(mwi_account, mwi_waiting,  mwi_new,  mwi_saved,  mwi_urgent, mwi_urgent_saved))== NULL) {
 				LM_ERR("Failed to construct MWI doc\n");
 				return NULL;
 			}
-			LM_INFO("mwi body [%.*s]\n", body->len, body->s);
+			LM_DBG("mwi body [%.*s]\n", body->len, body->s);
 
 			if ( dbk_pres_insert_pu(local_user, callid, localtag, remotetag, body, hash_code) < 0) {
-				LM_INFO("Failed to insert new pres_user mwi in htable\n");
+				LM_DBG("Failed to insert new pres_user mwi in htable\n");
 			}
 			return body;
 		}
-		LM_INFO("No record found and state terminated, do nothing\n");
+		LM_DBG("No record found and state terminated, do nothing\n");
 		return mwi_body(mwi_account, mwi_waiting,  mwi_new,  mwi_saved,  mwi_urgent, mwi_urgent_saved);
 	}
 
@@ -939,12 +939,12 @@ str* dbk_phtable_update_mwi(str* local_user, str* remote_user, str* callid,
 		}
 		lock_release(&dbk_phtable[hash_code].lock);
 		if (!terminated) {
-			LM_INFO("Dialog record not found, insert a new one\n");
+			LM_DBG("Dialog record not found, insert a new one\n");
 			if ( (body = mwi_body(mwi_account, mwi_waiting,  mwi_new,  mwi_saved,  mwi_urgent, mwi_urgent_saved))== NULL) {
 				LM_ERR("Failed to construct BLF XML doc\n");
 				goto ret_current_dialog;
 			}
-			LM_INFO("mwi body [%.*s]\n", body->len, body->s);
+			LM_DBG("mwi body [%.*s]\n", body->len, body->s);
 
 			pd = dbk_new_pres_dialog(callid, localtag, remotetag, body);
 			if (pd == NULL) {
@@ -979,7 +979,7 @@ str* dbk_phtable_update_mwi(str* local_user, str* remote_user, str* callid,
 //	}
 
 	if (!terminated) {
-		LM_INFO("Found record and matching dialog, update the body\n");
+		LM_DBG("Found record and matching dialog, update the body\n");
 		/* update only the body */
 		lock_release(&dbk_phtable[hash_code].lock);
 
@@ -987,7 +987,7 @@ str* dbk_phtable_update_mwi(str* local_user, str* remote_user, str* callid,
 			LM_ERR("Failed to construct BLF XML doc\n");
 			goto ret_current_dialog;
 		}
-		LM_INFO("mwi body [%.*s]\n", body->len, body->s);
+		LM_DBG("mwi body [%.*s]\n", body->len, body->s);
 
 		lock_get(&dbk_phtable[hash_code].lock);
 		/* search again the corresponding pu;
@@ -995,7 +995,7 @@ str* dbk_phtable_update_mwi(str* local_user, str* remote_user, str* callid,
 		pu = dbk_pres_search_pu(hash_code, local_user, 0, pu);
 		if (pu == NULL) { /* pres user deleted in the meantime (my dialog ended) */
 			lock_release(&dbk_phtable[hash_code].lock);
-			LM_INFO("pu deleted in the meantime (my dialog must have ended)\n");
+			LM_DBG("pu deleted in the meantime (my dialog must have ended)\n");
 			free_mwi_body(body);
 			body = NULL;
 			goto ret_current_dialog; /* to free the dlg_bodies array if there is anything there */
@@ -1004,7 +1004,7 @@ str* dbk_phtable_update_mwi(str* local_user, str* remote_user, str* callid,
 		pd = dbk_pres_pu_search_pd(pu, callid, localtag, remotetag, &pd_prev, pd);
 		if (pd == NULL) {
 			lock_release(&dbk_phtable[hash_code].lock);
-			LM_INFO("pd deleted in the meantime (my dialog must have ended)\n");
+			LM_DBG("pd deleted in the meantime (my dialog must have ended)\n");
 			free_mwi_body(body);
 			body = NULL;
 			goto ret_current_dialog; /* to free the dlg_bodies array if there is anything there */
@@ -1027,9 +1027,9 @@ str* dbk_phtable_update_mwi(str* local_user, str* remote_user, str* callid,
 		}
 		lock_release(&dbk_phtable[hash_code].lock);
 	} else {
-		LM_INFO("Found record and matching dialog, state terminated, delete\n");
+		LM_DBG("Found record and matching dialog, state terminated, delete\n");
 		if (pd_prev == NULL && pd->next == NULL) { // there is no other dialog record
-			LM_INFO("No other dialog - delete pu record\n");
+			LM_DBG("No other dialog - delete pu record\n");
 			/* delete pu */
 			if (pu_prev) {
 				pu_prev->next = pu->next;
@@ -1042,7 +1042,7 @@ str* dbk_phtable_update_mwi(str* local_user, str* remote_user, str* callid,
 			body = mwi_body(mwi_account, mwi_waiting,  mwi_new,  mwi_saved,  mwi_urgent, mwi_urgent_saved);
 			goto ret_current_dialog;
 		} else {
-			LM_INFO("Other dialog - delete pd record\n");
+			LM_DBG("Other dialog - delete pd record\n");
 			/* delete pd */
 			if (pd_prev) {
 				pd_prev->next = pd->next;
@@ -1125,10 +1125,10 @@ int dbk_phtable_flush(int flush_all, str* user)
     lock_get(&dbk_phtable[hash_code].lock);
     pu = dbk_pres_search_pu(hash_code, user, &pu_prev, 0);
     if (pu == NULL) {
-      LM_INFO("FLUSH: No record found for user %.*s\n", user->len, user->s);
+      LM_DBG("FLUSH: No record found for user %.*s\n", user->len, user->s);
       lock_release(&dbk_phtable[hash_code].lock);
     } else {
-      LM_INFO("FLUSH: Delete record for user %.*s\n", user->len, user->s);
+      LM_DBG("FLUSH: Delete record for user %.*s\n", user->len, user->s);
       if (pu_prev) {
         pu_prev->next = pu->next;
       } else {
@@ -1196,7 +1196,7 @@ struct mi_root * mi_dbk_phtable_flush(struct mi_root *cmd, void *param)
   LM_DBG("Flush type=[%.*s]\n", type.len, type.s);
 
   if (type.len == 3 && strncmp(type.s, "all", 3) == 0) {
-    LM_INFO("Flush all\n");
+    LM_DBG("Flush all\n");
     flush_all = 1;
   } else {
     node = node->next;
@@ -1207,7 +1207,7 @@ struct mi_root * mi_dbk_phtable_flush(struct mi_root *cmd, void *param)
       LM_ERR( "No user uri provided\n");
       return init_mi_tree(404, "No user uri provided", 20);
     }
-    LM_INFO("Flush user [%.*s]\n", user.len, user.s);
+    LM_DBG("Flush user [%.*s]\n", user.len, user.s);
   }
 
   if (dbk_phtable_flush(flush_all, &user) < 0 ) {
@@ -1305,7 +1305,7 @@ int blf_pres_update_handler(char *req, struct json_object *json_obj)
 			goto error;
 		}
 
-    LM_INFO("\n\n XML ==>> %.*s\n\n", body->len, body->s);
+    LM_DBG("\n\n XML ==>> %.*s\n\n", body->len, body->s);
     publ_info_t publ1;
     memset(&publ1, 0, sizeof(publ_info_t));
     if (!strcmp(direction.s, "inbound"))
@@ -1332,7 +1332,7 @@ int blf_pres_update_handler(char *req, struct json_object *json_obj)
     }
     */
 
-    LM_INFO("Received update: %.*s/%.*s %.*s %.*s"
+    LM_DBG("Received update: %.*s/%.*s %.*s %.*s"
             ,from_user.len, from_user.s
             ,to_user.len, to_user.s
             ,callid.len, callid.s
@@ -1474,7 +1474,7 @@ int dbk_presence_query(const db1_con_t* _h, const db_key_t* _k,
   pu = dbk_pres_search_pu(hash_code, &pres_uri, 0, 0);
 
   if ( pu == NULL ) {
-    LM_INFO("No dialog info found for user [%.*s]\n", pres_uri.len, pres_uri.s);
+    LM_DBG("No dialog info found for user [%.*s]\n", pres_uri.len, pres_uri.s);
     lock_release(&dbk_phtable[hash_code].lock);
     *_r = db_res;
     return 0;
@@ -1501,7 +1501,7 @@ int dbk_presence_query(const db1_con_t* _h, const db_key_t* _k,
 
   lock_release(&dbk_phtable[hash_code].lock);
 
-  LM_INFO("The user %.*s has %d active dialogs\n", pres_uri.len, pres_uri.s, row_cnt);
+  LM_DBG("The user %.*s has %d active dialogs\n", pres_uri.len, pres_uri.s, row_cnt);
   RES_COL_N(db_res) = _nc;
   RES_ROW_N(db_res) = row_cnt;
   if (db_allocate_rows(db_res) < 0) {
@@ -1550,7 +1550,7 @@ int dbk_presence_query(const db1_con_t* _h, const db_key_t* _k,
         RES_ROWS(db_res)[i].values[col].val.str_val = body[i];
         RES_ROWS(db_res)[i].values[col].free  = 1;
         RES_ROWS(db_res)[i].values[col].nul  = 0;
-        LM_INFO("Body in result: [%s]\n", RES_ROWS(db_res)[i].values[col].val.string_val);
+        LM_DBG("Body in result: [%s]\n", RES_ROWS(db_res)[i].values[col].val.string_val);
       } else {
         RES_ROWS(db_res)[i].values[col].val.str_val.s = "";
         RES_ROWS(db_res)[i].values[col].val.str_val.len = 0;
@@ -1601,7 +1601,7 @@ int dbk_dialoginfo_update(const db1_con_t* _h, const db_key_t* db_col,
     goto error;
   }
 
-  LM_INFO("Dialog info update %.*s/%.*s %.*s %.*s\n",
+  LM_DBG("Dialog info update %.*s/%.*s %.*s %.*s\n",
           from_user.len, from_user.s
           ,to_user.len, to_user.s
           ,callid.len, callid.s
@@ -1776,7 +1776,7 @@ int dbk_presence_subscribe_alert_kazoo(rmq_conn_t* rmq, str* user,unsigned int e
     goto error;
   }
 
-  LM_INFO("Subscription %.*s/%.*s expires in %d\n"
+  LM_DBG("Subscription %.*s/%.*s expires in %d\n"
           ,from_user->len, from_user->s
           ,user->len, user->s
           ,expires-(int)time(NULL));
@@ -1881,9 +1881,9 @@ int dbk_presence_subscribe_new(const db1_con_t* _h, const db_key_t* db_col,
 		}
 
             if(db_val[i].type == DB1_STR)
-               LM_INFO("subscribe field %s = %.*s ", db_col[i]->s, db_val[i].val.str_val.len, db_val[i].val.str_val.s);
+               LM_DBG("subscribe field %s = %.*s ", db_col[i]->s, db_val[i].val.str_val.len, db_val[i].val.str_val.s);
             if(db_val[i].type == DB1_INT)
-               LM_INFO("subscribe field %s = %i ", db_col[i]->s, db_val[i].val.int_val);
+               LM_DBG("subscribe field %s = %i ", db_col[i]->s, db_val[i].val.int_val);
 	}
 
   LM_DBG("i=%d expires=%u\n", i, expires);
@@ -1959,9 +1959,9 @@ int dbk_presence_subscribe_update(const db1_con_t* _h, const db_key_t* _k,
 		}
 
         if(_v[i].type == DB1_STR)
-           LM_INFO("subscribe field %s = %.*s ", _k[i]->s, _v[i].val.str_val.len, _v[i].val.str_val.s);
+           LM_DBG("subscribe field %s = %.*s ", _k[i]->s, _v[i].val.str_val.len, _v[i].val.str_val.s);
         if(_v[i].type == DB1_INT)
-           LM_INFO("subscribe field %s = %i ", _k[i]->s, _v[i].val.int_val);
+           LM_DBG("subscribe field %s = %i ", _k[i]->s, _v[i].val.int_val);
 
   }
 
@@ -1978,9 +1978,9 @@ int dbk_presence_subscribe_update(const db1_con_t* _h, const db_key_t* _k,
     }
 
     if(_uv[i].type == DB1_STR)
-       LM_INFO("subscribe field %s = %.*s ", _uk[i]->s, _uv[i].val.str_val.len, _uv[i].val.str_val.s);
+       LM_DBG("subscribe field %s = %.*s ", _uk[i]->s, _uv[i].val.str_val.len, _uv[i].val.str_val.s);
     if(_uv[i].type == DB1_INT)
-       LM_INFO("subscribe field %s = %i ", _uk[i]->s, _uv[i].val.int_val);
+       LM_DBG("subscribe field %s = %i ", _uk[i]->s, _uv[i].val.int_val);
 
   }
 
