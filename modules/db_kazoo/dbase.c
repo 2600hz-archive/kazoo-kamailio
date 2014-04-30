@@ -782,7 +782,7 @@ int amqp_register_notice(const db1_con_t* _h, const db_key_t* _k,
                         "\"Realm\":\"%.*s\","
                         "\"Username\":\"%.*s\","
                         "\"Expires\":\"%d\","
-                        "\"Contact\":\"\\\"%.*s\\\" <sip:%.*s@%.*s;fs_path=<sip:%.*s;lr;received='%.*s'>>\","
+                        "\"Contact\":\"\\\"%.*s\\\" <%.*s;fs_path=<sip:%.*s;lr;received='%.*s'>>\","
                         "\"Event-Timestamp\":\"%ld\","
                         "\"Server-ID\":\"\","
                         "\"Node\":\"kamailio@%.*s\","
@@ -805,7 +805,7 @@ int amqp_register_notice(const db1_con_t* _h, const db_key_t* _k,
                         user.len, user.s,
                         expires,
                         user.len, user.s,
-                        user.len, user.s, received.len-4, received.s+4,
+                        contact.len, contact.s,
                         fs_path.len, fs_path.s,
                         //network_ip.len, network_ip.s, network_port.len, network_port.s,
                         received.len, received.s,
