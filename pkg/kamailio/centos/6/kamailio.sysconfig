@@ -9,8 +9,7 @@ USER=kamailio
 GROUP=kamailio
 
 # Amount of shared memory to allocate for Kamailio (in Mb)
-MEMORY=128
+MEMORY=256
 
 # Amount of per-process (package) memory to allocate for Kamailio (in Mb)
-PKG_MEMORY=8
-
+PKG_MEMORY=4
