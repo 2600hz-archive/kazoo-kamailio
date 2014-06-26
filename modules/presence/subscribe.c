@@ -892,7 +892,6 @@ int handle_subscribe(struct sip_msg* msg, str watcher_user, str watcher_domain)
 		if(get_stored_info(msg, &subs, &reply_code, &reply_str )< 0)
 		{
 			LM_INFO("getting stored info\n");
-                        sent_reply = 1;
 			goto error;
 		}
 		reason= subs.reason;
