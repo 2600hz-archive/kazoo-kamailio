@@ -85,8 +85,9 @@ str str_domain_col = str_init("domain");
 str str_body_col = str_init("body");
 str str_expires_col = str_init("expires");
 str str_presentity_uri_col = str_init("presentity_uri");
-char *pres_uri_buf = NULL;
-int pres_uri_size = 0;
+
+//char *pres_uri_buf = NULL;
+//int pres_uri_size = 0;
 
 str str_event_col = str_init("event");
 str str_contact_col = str_init("contact");
@@ -1234,6 +1235,7 @@ int dbk_presence_query(const db1_con_t * _h, const db_key_t * _k,
     int uri_size;
     unsigned int hash_code;
     str pres_uri;
+    char pres_uri_buf[1024];
     dbk_pres_user_t *pu;
     dbk_pres_dialog_t *pd;
     db1_res_t *db_res = NULL;
@@ -1266,6 +1268,7 @@ int dbk_presence_query(const db1_con_t * _h, const db_key_t * _k,
 	return -1;
     }
 
+    /*
     uri_size = username.len + domain.len + 4;
     if (pres_uri_size < uri_size) {
 	pres_uri_size = uri_size * 2;
@@ -1275,11 +1278,12 @@ int dbk_presence_query(const db1_con_t * _h, const db_key_t * _k,
 	    return 0;
 	}
     }
+    */
 
+
+	sprintf(pres_uri_buf, "sip:%.*s@%.*s", username.len, username.s, domain.len, domain.s);
     pres_uri.s = pres_uri_buf;
-    pres_uri.len =
-	sprintf(pres_uri_buf, "sip:%.*s@%.*s", username.len, username.s,
-		domain.len, domain.s);
+    pres_uri.len = strlen(pres_uri_buf);
 
     LM_DBG("dbk presence query %s\n", pres_uri.s);
 
@@ -1802,7 +1806,7 @@ int dbk_presence_subscribe_update(const db1_con_t * _h, const db_key_t * _k,
 				  const db_val_t * _uv, const int _n,
 				  const int _un) {
 
-    str user = { 0, 0 }, contact = { 0, 0 };
+    str user = { 0, 0 }, contact = { 0, 0 }, from_user = { 0, 0 };
     str callid = { 0, 0 }, from_tag = { 0, 0 }, to_tag = { 0, 0 };
     str event = str_init("presence");
 
@@ -1899,19 +1903,35 @@ int dbk_presence_subscribe_update(const db1_con_t * _h, const db_key_t * _k,
 	       t->callid.s, value.rs.len, value.rs.s);
     }
 
-    if (parse_contact(t->uas.request->contact) == 0)
-	contact =
-	    ((contact_body_t *) t->uas.request->contact->parsed)->contacts->uri;
+    if (parse_contact(t->uas.request->contact) == 0) {
+    	contact_body_t * b = (contact_body_t *) t->uas.request->contact->parsed;
+    	contact =	b->contacts->uri;
+    	pkg_free(b);
+    	t->uas.request->contact->parsed = 0;
+    }
 
-    if (parse_event(t->uas.request->event) == 0)
-	event = ((event_t *) t->uas.request->event->parsed)->name;
+    if (parse_event(t->uas.request->event) == 0) {
+    	event_t *b = (event_t *) t->uas.request->event->parsed;
+    	event = b->name;
+    	pkg_free(b);
+    	t->uas.request->event->parsed = 0;
+    }
 
-    user = ((to_body_t *) t->uas.request->to->parsed)->uri;
+    if (parse_to_header(t->uas.request) == 0) {
+    	to_body_t *b = (to_body_t *) t->uas.request->to->parsed;
+    	user = b->uri;
+    }
+
+    if (parse_from_header(t->uas.request) == 0) {
+    	to_body_t *b = (to_body_t *) t->uas.request->from->parsed;
+    	from_user = b->uri;
+//    	pkg_free(b);
+//    	t->uas.request->from->parsed = 0;
+    }
 
     return dbk_presence_subscribe_alert_kazoo((rmq_conn_t *) _h->tail, &user,
 					      expires,
-					      &((to_body_t *) t->uas.request->
-						from->parsed)->uri, &event,
+					      &from_user, &event,
 					      &contact, &callid, &from_tag,
 					      &to_tag);
 
