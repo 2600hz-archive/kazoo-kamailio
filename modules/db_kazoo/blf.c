@@ -68,7 +68,20 @@ int dbk_initialize_pres_htable(void);
 #define MWI_JSON_FROM      	"From"
 #define MWI_JSON_TO        	"To"
 
-#define MWI_BODY                "Messages-Waiting: %.*s\r\nMessage-Account: %.*s\r\nVoice-Message: %.*s/%.*s (%.*s/%.*s)\r\n"
+#define MWI_BODY             "Messages-Waiting: %.*s\r\nMessage-Account: %.*s\r\nVoice-Message: %.*s/%.*s (%.*s/%.*s)\r\n"
+#define PRESENCE_BODY        "<?xml version=\"1.0\" encoding=\"UTF-8\"?> \
+<presence xmlns=\"urn:ietf:params:xml:ns:pidf\" xmlns:dm=\"urn:ietf:params:xml:ns:pidf:data-model\" xmlns:rpid=\"urn:ietf:params:xml:ns:pidf:rpid\" xmlns:c=\"urn:ietf:params:xml:ns:pidf:cipid\" entity=\"%s\"> \
+    <tuple xmlns=\"urn:ietf:params:xml:ns:pidf\" id=\"%s\"> \
+        <status> \
+            <basic>%s</basic> \
+        </status> \
+    </tuple> \
+    <note xmlns=\"urn:ietf:params:xml:ns:pidf\">%s</note> \
+    <dm:person xmlns:dm=\"urn:ietf:params:xml:ns:pidf:data-model\" xmlns:rpid=\"urn:ietf:params:xml:ns:pidf:rpid\" id=\"1\"> \
+        <rpid:activities>%s</rpid:activities> \
+        <dm:note>%s</dm:note> \
+    </dm:person> \
+</presence>"
 
 static char blf_queue_name_buffer[128];
 static amqp_bytes_t blf_queue;
@@ -79,6 +92,7 @@ char node_name[128];
 
 str str_event_message_summary = str_init("message-summary");
 str str_event_dialog = str_init("dialog");
+str str_event_presence = str_init("presence");
 
 str str_username_col = str_init("username");
 str str_domain_col = str_init("domain");
@@ -94,6 +108,15 @@ str str_contact_col = str_init("contact");
 str str_callid_col = str_init("callid");
 str str_from_tag_col = str_init("from_tag");
 str str_to_tag_col = str_init("to_tag");
+
+str str_presence_note_busy = str_init("Busy");
+str str_presence_note_otp = str_init("On the Phone");
+str str_presence_note_idle = str_init("Idle");
+str str_presence_note_offline = str_init("Offline");
+str str_presence_act_busy = str_init("<rpid:busy/>");
+str str_presence_act_otp = str_init("<rpid:on-the-phone/>");
+str str_presence_status_offline = str_init("closed");
+str str_presence_status_online = str_init("open");
 
 int dbk_initialize_presence() {
     str unique_string;
@@ -1064,6 +1087,84 @@ struct mi_root *mi_dbk_phtable_flush(struct mi_root *cmd, void *param) {
  * {"Replaces": "", "Refered-By": ""}
  * */
 
+
+int presence_pres_update_handler(char *req, struct json_object *json_obj) {
+    int ret = 0;
+    str from_user = { 0, 0 }, to_user = { 0, 0 };
+    str callid = { 0, 0 }, fromtag = { 0, 0 }, totag = { 0, 0 };
+    str state = { 0, 0 };
+    str direction = { 0, 0 };
+    char body[4096];
+    str presence_body = { 0, 0 };
+    str activity = str_init("");
+    str note = str_init("Idle");
+    str status = str_presence_status_online;
+
+    json_extract_field(BLF_JSON_FROM, from_user);
+    json_extract_field(BLF_JSON_TO, to_user);
+    json_extract_field(BLF_JSON_CALLID, callid);
+    json_extract_field(BLF_JSON_FROMTAG, fromtag);
+    json_extract_field(BLF_JSON_TOTAG, totag);
+    json_extract_field(BLF_JSON_DIRECTION, direction);
+    json_extract_field(BLF_JSON_STATE, state);
+
+    if (!from_user.len || !to_user.len || !callid.len || !state.len) {
+	LM_ERR("Wrong formated json %s\n", req);
+	goto error;
+    }
+
+    if (!strcmp(state.s, "early")) {
+    	note = str_presence_note_busy;
+    	activity = str_presence_act_busy;
+
+    } else if (!strcmp(state.s, "confirmed")) {
+    	note = str_presence_note_otp;
+    	activity = str_presence_act_otp;
+
+    } else if (!strcmp(state.s, "offline")) {
+    	note = str_presence_note_offline;
+    	status = str_presence_status_offline;
+
+    } else {
+    	note = str_presence_note_idle;
+    }
+
+
+    sprintf(body, PRESENCE_BODY, from_user.s, callid.s, status.s, note.s, activity.s, note.s);
+
+    presence_body.s = body;
+    presence_body.len = strlen(body);
+
+
+    publ_info_t publ1;
+    memset(&publ1, 0, sizeof(publ_info_t));
+    if (!strcmp(direction.s, "inbound"))
+	publ1.pres_uri = &from_user;
+    else
+	publ1.pres_uri = &to_user;
+
+    publ1.body = &presence_body;
+    publ1.event = PRESENCE_EVENT;
+    publ1.expires = 3600;
+    ret = pua_api.send_publish(&publ1);
+
+    LM_DBG("Received update: %.*s/%.*s %.*s %.*s", from_user.len, from_user.s,
+	   to_user.len, to_user.s, callid.len, callid.s, state.len, state.s);
+
+    if (ret < 0) {
+	LM_ERR("Failed to process dialoginfo update command\n");
+	ret = -1;
+    }
+
+    return ret;
+
+ error:
+    return -1;
+
+}
+
+
+
 int mwi_pres_update_handler(char *req, struct json_object *json_obj) {
     int ret = 0;
     char body[1024];
@@ -1203,6 +1304,11 @@ int rmqp_pres_update_handle(char *req) {
 			      event_package.len) == 0) {
 
 	    ret = mwi_pres_update_handler(req, json_obj);
+	} else if (event_package.len == str_event_presence.len
+		   && strncmp(event_package.s, str_event_presence.s,
+			      event_package.len) == 0) {
+
+	    ret = presence_pres_update_handler(req, json_obj);
 	}
     }
 
@@ -1232,7 +1338,6 @@ int dbk_presence_query(const db1_con_t * _h, const db_key_t * _k,
     str username = { 0, 0 };
     str domain = { 0, 0 };
     int i;
-    int uri_size;
     unsigned int hash_code;
     str pres_uri;
     char pres_uri_buf[1024];
@@ -1717,7 +1822,7 @@ int dbk_presence_subscribe_alert_kazoo(rmq_conn_t * rmq, str * user,
 int dbk_presence_subscribe_new(const db1_con_t * _h, const db_key_t * db_col,
 			       const db_val_t * db_val, const int _n) {
     unsigned int expires = 0;
-    str user = { 0, 0 };
+    str user = { 0, 0 }, from_user = { 0, 0 };
     int i;
     struct cell *t;
     pv_value_t value;
@@ -1783,19 +1888,33 @@ int dbk_presence_subscribe_new(const db1_con_t * _h, const db_key_t * db_col,
     LM_DBG("Stored $sht(dbk=>%.*s)=[%.*s]\n", t->callid.len, t->callid.s,
 	   value.rs.len, value.rs.s);
 
-    if (parse_contact(t->uas.request->contact) == 0)
-	contact =
-	    ((contact_body_t *) t->uas.request->contact->parsed)->contacts->uri;
+    if (parse_contact(t->uas.request->contact) == 0) {
+    	contact_body_t * b = (contact_body_t *) t->uas.request->contact->parsed;
+    	contact =	b->contacts->uri;
+    	pkg_free(b);
+    	t->uas.request->contact->parsed = 0;
+    }
 
-    if (parse_event(t->uas.request->event) == 0)
-	event = ((event_t *) t->uas.request->event->parsed)->name;
+    if (parse_event(t->uas.request->event) == 0) {
+    	event_t *b = (event_t *) t->uas.request->event->parsed;
+    	event = b->name;
+    	pkg_free(b);
+    	t->uas.request->event->parsed = 0;
+    }
 
-    user = ((to_body_t *) t->uas.request->to->parsed)->uri;
+    if (parse_to_header(t->uas.request) == 0) {
+    	to_body_t *b = (to_body_t *) t->uas.request->to->parsed;
+    	user = b->uri;
+    }
+
+    if (parse_from_header(t->uas.request) == 0) {
+    	to_body_t *b = (to_body_t *) t->uas.request->from->parsed;
+    	from_user = b->uri;
+    }
 
     return dbk_presence_subscribe_alert_kazoo((rmq_conn_t *) _h->tail, &user,
 					      expires,
-					      &((to_body_t *) t->uas.request->
-						from->parsed)->uri, &event,
+					      &from_user, &event,
 					      &contact, &callid, &from_tag,
 					      &to_tag);
 
@@ -1925,8 +2044,6 @@ int dbk_presence_subscribe_update(const db1_con_t * _h, const db_key_t * _k,
     if (parse_from_header(t->uas.request) == 0) {
     	to_body_t *b = (to_body_t *) t->uas.request->from->parsed;
     	from_user = b->uri;
-//    	pkg_free(b);
-//    	t->uas.request->from->parsed = 0;
     }
 
     return dbk_presence_subscribe_alert_kazoo((rmq_conn_t *) _h->tail, &user,

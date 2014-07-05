@@ -661,7 +661,7 @@ int db_kazoo_query(const db1_con_t * _h, const db_key_t * _k,
 	return -1;
     }
 
-    LM_DBG("query table=%s\n", _h->table->s);
+    LM_INFO("query table=%s\n", _h->table->s);
 
     if (strncmp(_h->table->s, "subscriber", 10) == 0) {
 	return dbk_credentials_query(_h, _k, _v, _c, _n, _nc, _r);
@@ -903,7 +903,7 @@ int db_kazoo_insert(const db1_con_t * _h, const db_key_t * _k,
 	return -1;
     }
 
-    LM_DBG("insert into table=%s\n", _h->table->s);
+    LM_INFO("insert into table=%s\n", _h->table->s);
 
     if (strncmp(_h->table->s, "location", _h->table->len) == 0) {
 	return amqp_register_notice(_h, _k, _v, _n);
@@ -922,7 +922,7 @@ int db_kazoo_insert_update(const db1_con_t * _h, const db_key_t * _k,
 	return -1;
     }
 
-    LM_DBG("insert into table=%s\n", _h->table->s);
+    LM_INFO("insert_update into table=%s\n", _h->table->s);
 
     if (strncmp(_h->table->s, "dialoginfo", _h->table->len) == 0) {
 	LM_DBG("Insert update called for dialoginfo table\n");
@@ -937,6 +937,7 @@ int db_kazoo_update(const db1_con_t * _h, const db_key_t * _k,
 		    const db_op_t * _o, const db_val_t * _v,
 		    const db_key_t * _uk, const db_val_t * _uv,
                     const int _n, const int _un) {
+    LM_INFO("update table=%s\n", _h->table->s);
     if (strncmp(_h->table->s, "active_watchers", _h->table->len) == 0) {
 	LM_DBG("Update called for active_watchers table\n");
 	return dbk_presence_subscribe_update(_h, _k, _v, _uk, _uv, _n, _un);

@@ -141,6 +141,7 @@ int db_kazoo_free_result(db1_con_t * _h, db1_res_t * _r) {
 
 int db_kazoo_delete(const db1_con_t * _h, const db_key_t * _k,
 		    const db_op_t * _o, const db_val_t * _v, const int _n) {
+    LM_INFO("delete table=%s\n", _h->table->s);
     return 0;
 }
 
