@@ -37,6 +37,7 @@
 
 #include "dbase.h"
 #include "blf.h"
+#include "presentity.h"
 
 static int mod_init(void);
 static void mod_destroy(void);
@@ -47,6 +48,12 @@ str dbk_reg_fs_path = { 0, 0 };
 
 int dbk_auth_wait_timeout = 3;
 int dbk_reconn_retries = 8;
+
+int dbk_presentity_phtable_size = 4096;
+
+int dbk_dialog_expires = 30;
+int dbk_presence_expires = 3600;
+int dbk_mwi_expires = 3600;
 
 struct tm_binds tmb;
 
@@ -64,12 +71,18 @@ static param_export_t params[] = {
     {"register_fs_path", STR_PARAM, &dbk_reg_fs_path.s},
     {"auth_wait_timeout", INT_PARAM, &dbk_auth_wait_timeout},
     {"reconn_retries", INT_PARAM, &dbk_reconn_retries},
+    {"presentity_hash_size", INT_PARAM, &dbk_presentity_phtable_size},
+    {"dialog_expires", INT_PARAM, &dbk_dialog_expires},
+    {"presence_expires", INT_PARAM, &dbk_presence_expires},
+    {"mwi_expires", INT_PARAM, &dbk_mwi_expires},
     {0, 0, 0}
 };
 
 static mi_export_t mi_cmds[] = {
     {"presence_list", mi_dbk_phtable_dump, 0, 0, 0},
     {"presence_flush", mi_dbk_phtable_flush, 0, 0, 0},
+    {"presentity_list", mi_dbk_presentity_dump, 0, 0, 0},
+    {"presentity_flush", mi_dbk_presentity_flush, 0, 0, 0},
     {0, 0, 0, 0, 0}
 };
 
@@ -111,6 +124,8 @@ static int mod_init(void) {
 	return -1;
     }
 
+    dbk_presentity_initialize();
+
     return 0;
 }
 
@@ -137,12 +152,6 @@ int db_kazoo_use_table(db1_con_t * _h, const str * _t) {
 
 int db_kazoo_free_result(db1_con_t * _h, db1_res_t * _r) {
     return db_free_result(_r);
-}
-
-int db_kazoo_delete(const db1_con_t * _h, const db_key_t * _k,
-		    const db_op_t * _o, const db_val_t * _v, const int _n) {
-    LM_INFO("delete table=%s\n", _h->table->s);
-    return 0;
 }
 
 int db_kazoo_raw_query(const db1_con_t * _h, const str * _s, db1_res_t ** _r) {
@@ -179,4 +188,5 @@ int db_kazoo_bind_api(db_func_t * dbb) {
 
 static void mod_destroy(void) {
     dbk_destroy_presence();
+    dbk_presentity_destroy();
 }

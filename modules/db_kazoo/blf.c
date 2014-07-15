@@ -16,6 +16,7 @@
 #include "../pua_dialoginfo/bind_dialoginfo.h"
 #include "../presence_dialoginfo/bind_pres_dialoginfo.h"
 #include "../../pvar.h"
+#include "../pua/pua.h"
 
 #include "../pua/pua_bind.h"
 #include "../pua/send_publish.h"
@@ -36,52 +37,6 @@ void start_presence_rmqp_consumer_processes(struct db_id *id);
 void rmqp_consumer_loop(struct db_id *id);
 int dbk_initialize_pres_htable(void);
 
-#define BLF_MAX_DIALOGS 8
-#define BLF_JSON_FROM      	"From"
-#define BLF_JSON_TO        	"To"
-#define BLF_JSON_CALLID    	"Call-ID"
-#define BLF_JSON_TOTAG     	"To-Tag"
-#define BLF_JSON_FROMTAG   	"From-Tag"
-#define BLF_JSON_STATE     	"State"
-#define BLF_JSON_USER      	"User"
-#define BLF_JSON_FROM     	"From"
-#define BLF_JSON_QUEUE     	"Queue"
-#define BLF_JSON_EXPIRES	"Expires"
-#define BLF_JSON_APP_NAME       "App-Name"
-#define BLF_JSON_APP_VERSION    "App-Version"
-#define BLF_JSON_NODE           "Node"
-#define BLF_JSON_SERVERID       "Server-ID"
-#define BLF_JSON_EVENT_CATEGORY "Event-Category"
-#define BLF_JSON_EVENT_NAME     "Event-Name"
-#define BLF_JSON_TYPE           "Type"
-#define BLF_JSON_MSG_ID         "Msg-ID"
-#define BLF_JSON_DIRECTION      "Direction"
-
-#define BLF_JSON_CONTACT   	"Contact"
-#define BLF_JSON_EVENT_PKG      "Event-Package"
-#define MWI_JSON_WAITING        "Messages-Waiting"
-#define MWI_JSON_NEW            "Messages-New"
-#define MWI_JSON_SAVED          "Messages-Saved"
-#define MWI_JSON_URGENT         "Messages-Urgent"
-#define MWI_JSON_URGENT_SAVED   "Messages-Urgent-Saved"
-#define MWI_JSON_ACCOUNT        "Message-Account"
-#define MWI_JSON_FROM      	"From"
-#define MWI_JSON_TO        	"To"
-
-#define MWI_BODY             "Messages-Waiting: %.*s\r\nMessage-Account: %.*s\r\nVoice-Message: %.*s/%.*s (%.*s/%.*s)\r\n"
-#define PRESENCE_BODY        "<?xml version=\"1.0\" encoding=\"UTF-8\"?> \
-<presence xmlns=\"urn:ietf:params:xml:ns:pidf\" xmlns:dm=\"urn:ietf:params:xml:ns:pidf:data-model\" xmlns:rpid=\"urn:ietf:params:xml:ns:pidf:rpid\" xmlns:c=\"urn:ietf:params:xml:ns:pidf:cipid\" entity=\"%s\"> \
-    <tuple xmlns=\"urn:ietf:params:xml:ns:pidf\" id=\"%s\"> \
-        <status> \
-            <basic>%s</basic> \
-        </status> \
-    </tuple> \
-    <note xmlns=\"urn:ietf:params:xml:ns:pidf\">%s</note> \
-    <dm:person xmlns:dm=\"urn:ietf:params:xml:ns:pidf:data-model\" xmlns:rpid=\"urn:ietf:params:xml:ns:pidf:rpid\" id=\"1\"> \
-        <rpid:activities>%s</rpid:activities> \
-        <dm:note>%s</dm:note> \
-    </dm:person> \
-</presence>"
 
 static char blf_queue_name_buffer[128];
 static amqp_bytes_t blf_queue;
@@ -90,33 +45,9 @@ str sht_name = str_init("$sht(dbkp=>$ci)");
 pv_spec_t sht_spec;
 char node_name[128];
 
-str str_event_message_summary = str_init("message-summary");
-str str_event_dialog = str_init("dialog");
-str str_event_presence = str_init("presence");
-
-str str_username_col = str_init("username");
-str str_domain_col = str_init("domain");
-str str_body_col = str_init("body");
-str str_expires_col = str_init("expires");
-str str_presentity_uri_col = str_init("presentity_uri");
-
-//char *pres_uri_buf = NULL;
-//int pres_uri_size = 0;
-
-str str_event_col = str_init("event");
-str str_contact_col = str_init("contact");
-str str_callid_col = str_init("callid");
-str str_from_tag_col = str_init("from_tag");
-str str_to_tag_col = str_init("to_tag");
-
-str str_presence_note_busy = str_init("Busy");
-str str_presence_note_otp = str_init("On the Phone");
-str str_presence_note_idle = str_init("Idle");
-str str_presence_note_offline = str_init("Offline");
-str str_presence_act_busy = str_init("<rpid:busy/>");
-str str_presence_act_otp = str_init("<rpid:on-the-phone/>");
-str str_presence_status_offline = str_init("closed");
-str str_presence_status_online = str_init("open");
+extern int dbk_dialog_expires;
+extern int dbk_presence_expires;
+extern int dbk_mwi_expires;
 
 int dbk_initialize_presence() {
     str unique_string;
@@ -399,6 +330,7 @@ typedef struct {
     dbk_pres_user_t *pu;
 } dbk_pres_htable_t;
 
+
 static dbk_pres_htable_t *dbk_phtable = NULL;
 unsigned int dbk_phtable_size = 256;
 
@@ -476,6 +408,7 @@ dbk_pres_user_t *dbk_pres_search_pu(unsigned int hash_code, str * user,
 
     return pu;
 }
+
 
 dbk_pres_dialog_t *dbk_new_pres_dialog(str * callid, str * localtag,
 				       str * remotetag, str * body) {
@@ -658,296 +591,277 @@ str *dbk_blf_aggregate_body(str * user, str * dlg_bodies, int dlg_no) {
 }
 
 str *dbk_phtable_update(str * local_user, str * remote_user, str * callid,
-			str * localtag, str * remotetag, str * state,
-			int initiator) {
-    dbk_pres_user_t *pu, *pu_prev = NULL;
-    dbk_pres_dialog_t *pd, *pd_prev = NULL;
-    unsigned int hash_code = core_hash(local_user, 0, dbk_phtable_size);
-    str *body = NULL;
-    int terminated = strcmp(state->s, "terminated") == 0 ? 1 : 0;
-    str dlg_bodies[BLF_MAX_DIALOGS];
-    int dlg_no = 1;
-    int i;
+		str * localtag, str * remotetag, str * state, int initiator) {
+	dbk_pres_user_t *pu, *pu_prev = NULL;
+	dbk_pres_dialog_t *pd, *pd_prev = NULL;
+	unsigned int hash_code = core_hash(local_user, 0, dbk_phtable_size);
+	str *body = NULL;
+	int terminated = 0; //strcmp(state->s, "terminated") == 0 ? 1 : 0;
+	str dlg_bodies[BLF_MAX_DIALOGS];
+	int dlg_no = 1;
+	int i;
 
-    LM_DBG("Update dbk phtable: %.*s %.*s %.*s %.*s", local_user->len,
-	   local_user->s, remote_user->len, remote_user->s, callid->len,
-	   callid->s, state->len, state->s);
+	LM_DBG("Update dbk phtable: %.*s %.*s %.*s %.*s", local_user->len,
+			local_user->s, remote_user->len, remote_user->s, callid->len,
+			callid->s, state->len, state->s);
 
-    if (terminated) {
-	LM_DBG("Updated to terminated state\n");
-    }
-
-    lock_get(&dbk_phtable[hash_code].lock);
-
-    pu = dbk_pres_search_pu(hash_code, local_user, &pu_prev, 0);
-
-    /**  1. No record for user */
-    if (pu == NULL) {
-
-	lock_release(&dbk_phtable[hash_code].lock);
-
-	if (!terminated) {
-	    LM_DBG
-		("No record found for %.*s/%.*s, add with initial state %.*s\n",
-		 local_user->len, local_user->s, remote_user->len,
-		 remote_user->s, state->len, state->s);
-	    if ((body =
-		 pua_dialoginfo_api.build_dialoginfo(state->s, local_user,
-						     remote_user, callid,
-						     initiator, localtag,
-						     remotetag, 0, 0,
-						     0)) == NULL) {
-		LM_ERR("Failed to construct BLF XML doc\n");
-		return NULL;
-	    }
-
-	    LM_DBG("dialoginfo body [%.*s]\n", body->len, body->s);
-
-	    if (dbk_pres_insert_pu
-		(local_user, callid, localtag, remotetag, body,
-		 hash_code) < 0) {
-		LM_ERR("Failed to insert new pres_user in htable\n");
-	    }
-
-	    return body;
+	if (terminated) {
+		LM_DBG("Updated to terminated state\n");
 	}
-
-	LM_DBG
-	    ("No record found for %.*s/%.*s and state terminated, do nothing\n",
-	     local_user->len, local_user->s, remote_user->len, remote_user->s);
-	return pua_dialoginfo_api.build_dialoginfo(state->s, local_user,
-						   remote_user, callid,
-						   initiator, localtag,
-						   remotetag, 0, 0, 0);
-    }
-
-    pd = dbk_pres_pu_search_pd(pu, callid, localtag, remotetag, &pd_prev, 0);
-
-    /**  2. Existing record for user, no record for dialog */
-    if (pd == NULL) {
-
-	/* copy the other bodies to create the aggregated body */
-	if (pu->pd != NULL) {
-	    dbk_blf_copy_bodies(pu, NULL, dlg_bodies, &dlg_no);
-	}
-
-	lock_release(&dbk_phtable[hash_code].lock);
-
-	if (!terminated) {
-	    LM_DBG
-		("Dialog %.*s not found for %.*s/%.*s, add with initial state %.*s\n",
-		 callid->len, callid->s, local_user->len, local_user->s,
-		 remote_user->len, remote_user->s, state->len, state->s);
-	    if ((body =
-		 pua_dialoginfo_api.build_dialoginfo(state->s, local_user,
-						     remote_user, callid,
-						     initiator, localtag,
-						     remotetag, 0, 0,
-						     0)) == NULL) {
-		LM_ERR("Failed to construct BLF XML doc\n");
-		goto ret_current_dialog;
-	    }
-
-	    LM_DBG("dialoginfo body [%.*s]\n", body->len, body->s);
-
-	    pd = dbk_new_pres_dialog(callid, localtag, remotetag, body);
-
-	    if (pd == NULL) {
-		LM_ERR("Failed to create new pres dialog\n");
-		goto ret_agg_dialogs;
-	    }
-
-	    lock_get(&dbk_phtable[hash_code].lock);
-
-	    /* search again the corresponding pu
-	     * give it the prev addr to speed up the search */
-	    pu = dbk_pres_search_pu(hash_code, local_user, 0, pu);
-
-            /* pu deleted in the meantime (another dialog ended) */
-	    if (pu == NULL) {
-
-		lock_release(&dbk_phtable[hash_code].lock);
-
-		shm_free(pd);
-
-		dbk_pres_insert_pu(local_user, callid, localtag, remotetag,
-				   body, hash_code);
-		goto ret_current_dialog;
-	    }
-
-	    pd->next = pu->pd;
-	    pu->pd = pd;
-
-	    lock_release(&dbk_phtable[hash_code].lock);
-
-	} else {
-            /* terminated */
-	    LM_DBG
-		("Dialog %.*s not found for %.*s/%.*s, building terminated body\n",
-		 callid->len, callid->s, local_user->len, local_user->s,
-		 remote_user->len, remote_user->s);
-	    body =
-		pua_dialoginfo_api.build_dialoginfo(state->s, local_user,
-						    remote_user, callid,
-						    initiator, localtag,
-						    remotetag, 0, 0, 0);
-	}
-
-	goto ret_agg_dialogs;
-    }
-
-    /**  3. Existing record for user and existing record for dialog */
-
-    /* If there are other dialogs, make a copy of the bodies */
-    if (pu->pd != pd || pd->next != NULL) {
-	dbk_blf_copy_bodies(pu, pd, dlg_bodies, &dlg_no);
-    }
-
-    if (!terminated) {
-	LM_DBG
-	    ("Found record %.*s/%.*s and matching dialog %.*s, update the state %.*s\n",
-	     local_user->len, local_user->s, remote_user->len, remote_user->s,
-	     callid->len, callid->s, state->len, state->s);
-
-	/* update only the body */
-	lock_release(&dbk_phtable[hash_code].lock);
-
-	if ((body =
-	     pua_dialoginfo_api.build_dialoginfo(state->s, local_user,
-						 remote_user, callid, initiator,
-						 localtag, remotetag, 0, 0,
-						 0)) == NULL) {
-	    LM_ERR("Failed to construct BLF XML doc\n");
-	    goto ret_current_dialog;
-	}
-
-	LM_DBG("dialoginfo body [%.*s]\n", body->len, body->s);
 
 	lock_get(&dbk_phtable[hash_code].lock);
 
-	/* search again the corresponding pu;
-	 * give it the prev addr to speed up the search */
-	pu = dbk_pres_search_pu(hash_code, local_user, 0, pu);
+	pu = dbk_pres_search_pu(hash_code, local_user, &pu_prev, 0);
 
-        /* pu deleted in the meantime (another dialog ended) */
-	if (pu == NULL) {
-	    LM_DBG
-		("User %.*s deleted in the meantime (my dialog must have ended)\n",
-		 local_user->len, local_user->s);
+	/**  1. No record for user */
+	if (pu == NULL ) {
 
-	    lock_release(&dbk_phtable[hash_code].lock);
-	    dbk_free_xml(body);
-	    body = NULL;
-
-            /* to free the dlg_bodies array if there is anything there */
-	    goto ret_current_dialog;
-	}
-
-	pd = dbk_pres_pu_search_pd(pu, callid, localtag, remotetag, &pd_prev,
-				   pd);
-
-	if (pd == NULL) {
-	    LM_DBG
-		("Dialog %.*s deleted in the meantime (my dialog must have ended)\n",
-		 callid->len, callid->s);
-
-	    lock_release(&dbk_phtable[hash_code].lock);
-	    dbk_free_xml(body);
-	    body = NULL;
-
-            /* to free the dlg_bodies array if there is anything there */
-	    goto ret_current_dialog;
-	}
-
-	if (pd->body_size_alloc < body->len) {
-	    pd->body_size_alloc = body->len * 2;
-	    pd->body.s = (char *)shm_realloc(pd->body.s, pd->body_size_alloc);
-
-	    if (pd->body.s == NULL) {
-		LM_ERR("No more shared memory\n");
 		lock_release(&dbk_phtable[hash_code].lock);
+
+		if (!terminated) {
+			LM_DBG
+			("No record found for %.*s/%.*s, add with initial state %.*s\n",
+					local_user->len, local_user->s, remote_user->len,
+					remote_user->s, state->len, state->s);
+			if ((body = pua_dialoginfo_api.build_dialoginfo(state->s,
+					local_user, remote_user, callid, initiator, localtag,
+					remotetag, 0, 0, 0)) == NULL ) {
+				LM_ERR("Failed to construct BLF XML doc\n");
+				return NULL ;
+			}
+
+			LM_DBG("dialoginfo body [%.*s]\n", body->len, body->s);
+
+			if (dbk_pres_insert_pu(local_user, callid, localtag, remotetag,
+					body, hash_code) < 0) {
+				LM_ERR("Failed to insert new pres_user in htable\n");
+			}
+
+			return body;
+		}
+
+		LM_DBG
+		("No record found for %.*s/%.*s and state terminated, do nothing\n",
+				local_user->len, local_user->s, remote_user->len, remote_user->s);
+		return pua_dialoginfo_api.build_dialoginfo(state->s, local_user,
+				remote_user, callid, initiator, localtag, remotetag, 0, 0, 0);
+	}
+
+	pd = dbk_pres_pu_search_pd(pu, callid, localtag, remotetag, &pd_prev, 0);
+
+	/**  2. Existing record for user, no record for dialog */
+	if (pd == NULL ) {
+
+		/* copy the other bodies to create the aggregated body */
+		if (pu->pd != NULL ) {
+			dbk_blf_copy_bodies(pu, NULL, dlg_bodies, &dlg_no);
+		}
+
+		lock_release(&dbk_phtable[hash_code].lock);
+
+		if (!terminated) {
+			LM_DBG
+			("Dialog %.*s not found for %.*s/%.*s, add with initial state %.*s\n",
+					callid->len, callid->s, local_user->len, local_user->s,
+					remote_user->len, remote_user->s, state->len, state->s);
+			if ((body = pua_dialoginfo_api.build_dialoginfo(state->s,
+					local_user, remote_user, callid, initiator, localtag,
+					remotetag, 0, 0, 0)) == NULL ) {
+				LM_ERR("Failed to construct BLF XML doc\n");
+				goto ret_current_dialog;
+			}
+
+			LM_DBG("dialoginfo body [%.*s]\n", body->len, body->s);
+
+			pd = dbk_new_pres_dialog(callid, localtag, remotetag, body);
+
+			if (pd == NULL ) {
+				LM_ERR("Failed to create new pres dialog\n");
+				goto ret_agg_dialogs;
+			}
+
+			lock_get(&dbk_phtable[hash_code].lock);
+
+			/* search again the corresponding pu
+			 * give it the prev addr to speed up the search */
+			pu = dbk_pres_search_pu(hash_code, local_user, 0, pu);
+
+			/* pu deleted in the meantime (another dialog ended) */
+			if (pu == NULL ) {
+
+				lock_release(&dbk_phtable[hash_code].lock);
+
+				shm_free(pd);
+
+				dbk_pres_insert_pu(local_user, callid, localtag, remotetag,
+						body, hash_code);
+				goto ret_current_dialog;
+			}
+
+			pd->next = pu->pd;
+			pu->pd = pd;
+
+			lock_release(&dbk_phtable[hash_code].lock);
+
+		} else {
+			/* terminated */
+			LM_DBG
+			("Dialog %.*s not found for %.*s/%.*s, building terminated body\n",
+					callid->len, callid->s, local_user->len, local_user->s,
+					remote_user->len, remote_user->s);
+			body = pua_dialoginfo_api.build_dialoginfo(state->s, local_user,
+					remote_user, callid, initiator, localtag, remotetag, 0, 0,
+					0);
+		}
+
 		goto ret_agg_dialogs;
-	    }
 	}
 
-	memcpy(pd->body.s, body->s, body->len);
-	pd->body.len = body->len;
+	/**  3. Existing record for user and existing record for dialog */
 
-	if (pu->pd != pd || pd->next != NULL) {
-	    lock_release(&dbk_phtable[hash_code].lock);
-	    goto ret_current_dialog;
+	/* If there are other dialogs, make a copy of the bodies */
+	if (pu->pd != pd || pd->next != NULL ) {
+		dbk_blf_copy_bodies(pu, pd, dlg_bodies, &dlg_no);
 	}
 
-	lock_release(&dbk_phtable[hash_code].lock);
-    } else {
-	LM_DBG("pd_prev: %p  pd->next: %p\n", pd_prev, pd->next);
+	if (!terminated) {
+		LM_DBG
+		("Found record %.*s/%.*s and matching dialog %.*s, update the state %.*s\n",
+				local_user->len, local_user->s, remote_user->len, remote_user->s,
+				callid->len, callid->s, state->len, state->s);
 
-        /* there are no other dialog record */
-	if (pd_prev == NULL && pd->next == NULL) {
-	    LM_DBG
-		("Found record %.*s/%.*s and matching dialog %.*s, no remaining dialogs removing pu record\n",
-		 local_user->len, local_user->s, remote_user->len,
-		 remote_user->s, callid->len, callid->s);
+		/* update only the body */
+		lock_release(&dbk_phtable[hash_code].lock);
 
-	    /* delete pu */
-	    if (pu_prev) {
-		pu_prev->next = pu->next;
-	    } else {
-		dbk_phtable[hash_code].pu = pu->next;
-	    }
+		if ((body = pua_dialoginfo_api.build_dialoginfo(state->s, local_user,
+				remote_user, callid, initiator, localtag, remotetag, 0, 0, 0))
+				== NULL ) {
+			LM_ERR("Failed to construct BLF XML doc\n");
+			goto ret_current_dialog;
+		}
 
-	    lock_release(&dbk_phtable[hash_code].lock);
-	    dbk_free_pu(pu);
+		LM_DBG("dialoginfo body [%.*s]\n", body->len, body->s);
 
-	    body =
-		pua_dialoginfo_api.build_dialoginfo(state->s, local_user,
-						    remote_user, callid,
-						    initiator, localtag,
-						    remotetag, 0, 0, 0);
-	    goto ret_current_dialog;
+		lock_get(&dbk_phtable[hash_code].lock);
+
+		/* search again the corresponding pu;
+		 * give it the prev addr to speed up the search */
+		pu = dbk_pres_search_pu(hash_code, local_user, 0, pu);
+
+		/* pu deleted in the meantime (another dialog ended) */
+		if (pu == NULL ) {
+			LM_DBG
+			("User %.*s deleted in the meantime (my dialog must have ended)\n",
+					local_user->len, local_user->s);
+
+			lock_release(&dbk_phtable[hash_code].lock);
+			dbk_free_xml(body);
+			body = NULL;
+
+			/* to free the dlg_bodies array if there is anything there */
+			goto ret_current_dialog;
+		}
+
+		pd = dbk_pres_pu_search_pd(pu, callid, localtag, remotetag, &pd_prev,
+				pd);
+
+		if (pd == NULL ) {
+			LM_DBG
+			("Dialog %.*s deleted in the meantime (my dialog must have ended)\n",
+					callid->len, callid->s);
+
+			lock_release(&dbk_phtable[hash_code].lock);
+			dbk_free_xml(body);
+			body = NULL;
+
+			/* to free the dlg_bodies array if there is anything there */
+			goto ret_current_dialog;
+		}
+
+		if (pd->body_size_alloc < body->len) {
+			pd->body_size_alloc = body->len * 2;
+			pd->body.s = (char *) shm_realloc(pd->body.s, pd->body_size_alloc);
+
+			if (pd->body.s == NULL ) {
+				LM_ERR("No more shared memory\n");
+				lock_release(&dbk_phtable[hash_code].lock);
+				goto ret_agg_dialogs;
+			}
+		}
+
+		memcpy(pd->body.s, body->s, body->len);
+		pd->body.len = body->len;
+
+		if (pu->pd != pd || pd->next != NULL ) {
+			lock_release(&dbk_phtable[hash_code].lock);
+			goto ret_current_dialog;
+		}
+
+		lock_release(&dbk_phtable[hash_code].lock);
 	} else {
-	    LM_DBG
-		("Found record %.*s/%.*s and matching dialog %.*s, other dialogs remain\n",
-		 local_user->len, local_user->s, remote_user->len,
-		 remote_user->s, callid->len, callid->s);
+		LM_DBG("pd_prev: %p  pd->next: %p\n", pd_prev, pd->next);
 
-	    /* delete pd */
-	    if (pd_prev) {
-		pd_prev->next = pd->next;
-	    } else {
-		pu->pd = pd->next;
-	    }
+		/* there are no other dialog record */
+		if (pd_prev == NULL && pd->next == NULL ) {
+			LM_DBG
+			("Found record %.*s/%.*s and matching dialog %.*s, no remaining dialogs removing pu record\n",
+					local_user->len, local_user->s, remote_user->len,
+					remote_user->s, callid->len, callid->s);
 
-	    lock_release(&dbk_phtable[hash_code].lock);
-	    dbk_free_pd(pd);
-	    body =
-		pua_dialoginfo_api.build_dialoginfo(state->s, local_user,
-						    remote_user, callid,
-						    initiator, localtag,
-						    remotetag, 0, 0, 0);
+			/* delete pu */
+			if (pu_prev) {
+				pu_prev->next = pu->next;
+			} else {
+				dbk_phtable[hash_code].pu = pu->next;
+			}
+
+			lock_release(&dbk_phtable[hash_code].lock);
+			dbk_free_pu(pu);
+
+			body = pua_dialoginfo_api.build_dialoginfo(state->s, local_user,
+					remote_user, callid, initiator, localtag, remotetag, 0, 0,
+					0);
+			goto ret_current_dialog;
+		} else {
+			LM_DBG
+			("Found record %.*s/%.*s and matching dialog %.*s, other dialogs remain\n",
+					local_user->len, local_user->s, remote_user->len,
+					remote_user->s, callid->len, callid->s);
+
+			/* delete pd */
+			if (pd_prev) {
+				pd_prev->next = pd->next;
+			} else {
+				pu->pd = pd->next;
+			}
+
+			lock_release(&dbk_phtable[hash_code].lock);
+			dbk_free_pd(pd);
+			body = pua_dialoginfo_api.build_dialoginfo(state->s, local_user,
+					remote_user, callid, initiator, localtag, remotetag, 0, 0,
+					0);
+		}
 	}
-    }
 
- ret_agg_dialogs:
-    if (dlg_no > 1) {
-	str *body_copy = body;
-	dlg_bodies[0] = *body;
-	body = dbk_blf_aggregate_body(local_user, dlg_bodies, dlg_no);
-	if (body == NULL) {
-	    LM_ERR("Failed to aggregate body\n");
-	    body = body_copy;
-	} else {
-	    dbk_free_xml(body_copy);
+	ret_agg_dialogs: if (dlg_no > 1) {
+		str *body_copy = body;
+		dlg_bodies[0] = *body;
+		body = dbk_blf_aggregate_body(local_user, dlg_bodies, dlg_no);
+		if (body == NULL ) {
+			LM_ERR("Failed to aggregate body\n");
+			body = body_copy;
+		} else {
+			dbk_free_xml(body_copy);
+		}
 	}
-    }
 
- ret_current_dialog:
-    /* free the copied dialog bodies */
-    for (i = 1; i < dlg_no; i++) {
-	pkg_free(dlg_bodies[i].s);
-    }
+	ret_current_dialog:
+	/* free the copied dialog bodies */
+	for (i = 1; i < dlg_no; i++) {
+		pkg_free(dlg_bodies[i].s);
+	}
 
-    return body;
+	return body;
 }
 
 #define json_extract_field(json_name, field)  do {                      \
@@ -1138,14 +1052,22 @@ int presence_pres_update_handler(char *req, struct json_object *json_obj) {
 
     publ_info_t publ1;
     memset(&publ1, 0, sizeof(publ_info_t));
-    if (!strcmp(direction.s, "inbound"))
+    if (!strcmp(direction.s, "inbound")) {
+
 	publ1.pres_uri = &from_user;
-    else
+    publ1.id = from_user;
+
+    } else {
 	publ1.pres_uri = &to_user;
+    publ1.id = to_user;
+
+    }
 
     publ1.body = &presence_body;
     publ1.event = PRESENCE_EVENT;
-    publ1.expires = 3600;
+    publ1.flag |= UPDATE_TYPE;
+    publ1.expires = dbk_presence_expires;
+
     ret = pua_api.send_publish(&publ1);
 
     LM_DBG("Received update: %.*s/%.*s %.*s %.*s", from_user.len, from_user.s,
@@ -1162,8 +1084,6 @@ int presence_pres_update_handler(char *req, struct json_object *json_obj) {
     return -1;
 
 }
-
-
 
 int mwi_pres_update_handler(char *req, struct json_object *json_obj) {
     int ret = 0;
@@ -1200,10 +1120,13 @@ int mwi_pres_update_handler(char *req, struct json_object *json_obj) {
     /* send_publish */
     publ_info_t publ;
     memset(&publ, 0, sizeof(publ_info_t));
+    publ.id = to_user;
     publ.pres_uri = &to_user;
     publ.body = &mwi_body;
     publ.event = MSGSUM_EVENT;
-    publ.expires = 180;
+    publ.flag |= UPDATE_TYPE;
+    publ.expires = dbk_mwi_expires;
+
     ret = pua_api.send_publish(&publ);
 
     return ret;
@@ -1217,6 +1140,11 @@ int blf_pres_update_handler(char *req, struct json_object *json_obj) {
     str state = { 0, 0 };
     str *body = NULL;
     str direction = { 0, 0 };
+    str extra_headers = {0, 0};
+    str header_name = str_init("Sender");
+    char sender_buf[1024];
+    char extra_buf[1024];
+    str sender = {0, 0};
 
     json_extract_field(BLF_JSON_FROM, from_user);
     json_extract_field(BLF_JSON_TO, to_user);
@@ -1231,14 +1159,13 @@ int blf_pres_update_handler(char *req, struct json_object *json_obj) {
 	goto error;
     }
 
-    if (!strcmp(direction.s, "inbound"))
-	body =
-	    dbk_phtable_update(&from_user, &to_user, &callid, &fromtag, &totag,
-			       &state, 1);
-    else
-	body =
-	    dbk_phtable_update(&to_user, &from_user, &callid, &totag, &fromtag,
-			       &state, 0);
+    if (!strcmp(direction.s, "inbound")) {
+    	//	body = dbk_phtable_update(&from_user, &to_user, &callid, &fromtag, &totag, &state, 1);
+    	body = pua_dialoginfo_api.build_dialoginfo(state.s,	&from_user, &to_user, &callid, 1, &fromtag, &totag, 0, 0, 0);
+	} else {
+		// body = dbk_phtable_update(&to_user, &from_user, &callid, &totag, &fromtag, &state, 0);
+		body = pua_dialoginfo_api.build_dialoginfo(state.s,	&to_user, &from_user, &callid, 0, &totag, &fromtag, 0, 0, 0);
+	}
 
     if (body == NULL) {
 	LM_ERR("Failed to construct BLF XML doc\n");
@@ -1249,14 +1176,37 @@ int blf_pres_update_handler(char *req, struct json_object *json_obj) {
 
     publ_info_t publ1;
     memset(&publ1, 0, sizeof(publ_info_t));
-    if (!strcmp(direction.s, "inbound"))
-	publ1.pres_uri = &from_user;
-    else
-	publ1.pres_uri = &to_user;
+    if (!strcmp(direction.s, "inbound")) {
+    	publ1.pres_uri = &from_user;
+    	publ1.id = from_user;
+    } else {
+    	publ1.pres_uri = &to_user;
+    	publ1.id = to_user;
+    }
 
     publ1.body = body;
     publ1.event = DIALOG_EVENT;
-    publ1.expires = 3600;
+    publ1.expires = dbk_dialog_expires;
+    publ1.flag |= UPDATE_TYPE;
+
+    sprintf(sender_buf, "sip:%s",callid.s);
+    sender.s = sender_buf;
+    sender.len = strlen(sender_buf);
+
+	/* build extra_headers with Sender*/
+   	extra_headers.s= extra_buf;
+   	memcpy(extra_headers.s, header_name.s, header_name.len);
+   	extra_headers.len= header_name.len;
+   	memcpy(extra_headers.s+extra_headers.len,": ",2);
+   	extra_headers.len+= 2;
+   	memcpy(extra_headers.s+ extra_headers.len, sender.s, sender.len);
+   	extra_headers.len+= sender.len;
+   	memcpy(extra_headers.s+ extra_headers.len, CRLF, CRLF_LEN);
+   	extra_headers.len+= CRLF_LEN;
+
+   	publ1.extra_headers = &extra_headers;
+
+
     ret = pua_api.send_publish(&publ1);
     dbk_free_xml(body);
 
@@ -1333,202 +1283,200 @@ int dbk_presence_query_expired(db1_res_t ** _r) {
 }
 
 int dbk_presence_query(const db1_con_t * _h, const db_key_t * _k,
-		       const db_val_t * _v, const db_key_t * _c, int _n,
-		       int _nc, db1_res_t ** _r) {
-    str username = { 0, 0 };
-    str domain = { 0, 0 };
-    int i;
-    unsigned int hash_code;
-    str pres_uri;
-    char pres_uri_buf[1024];
-    dbk_pres_user_t *pu;
-    dbk_pres_dialog_t *pd;
-    db1_res_t *db_res = NULL;
-    int col;
-    str body[BLF_MAX_DIALOGS];
-    int row_cnt = 0;
+		const db_op_t * _op, const db_val_t * _v, const db_key_t * _c, int _n, int _nc,
+		const db_key_t _o, db1_res_t ** _r) {
+	str username = { 0, 0 };
+	str domain = { 0, 0 };
+	int i;
+	unsigned int hash_code;
+	str pres_uri;
+	char pres_uri_buf[1024];
+	dbk_pres_user_t *pu;
+	dbk_pres_dialog_t *pd;
+	db1_res_t *db_res = NULL;
+	int col;
+	str body[BLF_MAX_DIALOGS];
+	int row_cnt = 0;
 
-    if (_n == 2 && _k[0]->len == str_expires_col.len &&
-	strncmp(_k[0]->s, str_expires_col.s, str_expires_col.len) == 0) {
-	LM_DBG("dbk_presence_query goes to dbk_presence_query_expired\n");
-	return dbk_presence_query_expired(_r);
-    }
+	for (i = 0; i < _n; i++) {
+		if (_k[i]->len == str_username_col.len
+				&& strncmp(_k[i]->s, str_username_col.s, str_username_col.len) == 0) {
+			username = _v[i].val.str_val;
+		} else if (_k[i]->len == str_domain_col.len
+				&& strncmp(_k[i]->s, str_domain_col.s, str_domain_col.len) == 0) {
+			domain = _v[i].val.str_val;
+		}
 
-    for (i = 0; i < _n; i++) {
-	if (username.len && domain.len)
-	    break;
-	if (_k[i]->len == str_username_col.len &&
-	    strncmp(_k[i]->s, str_username_col.s, str_username_col.len) == 0) {
-	    username = _v[i].val.str_val;
-	} else
-	    if (_k[i]->len == str_domain_col.len &&
-		strncmp(_k[i]->s, str_domain_col.s, str_domain_col.len) == 0) {
-	    domain = _v[i].val.str_val;
+		if (_v[i].type == DB1_STR) {
+		    LM_INFO("presence query field %s %s %.*s ", _k[i]->s, (_op && _op[i] ? _op[i] : "="),
+			   _v[i].val.str_val.len, _v[i].val.str_val.s);
+		} else if (_v[i].type == DB1_BLOB) {
+		    LM_INFO("presence query field %s %s %.*s ", _k[i]->s, (_op && _op[i] ? _op[i] : "="),
+			   _v[i].val.str_val.len, _v[i].val.str_val.s);
+		} else if (_v[i].type == DB1_INT) {
+		    LM_INFO("presence query field %s %s %i ", _k[i]->s, (_op && _op[i] ? _op[i] : "="),
+			   _v[i].val.int_val);
+		} else {
+		    LM_INFO("presence query other field %s %s %i ", _k[i]->s, (_op && _op[i] ? _op[i] : "="), _v[i].type);
+		}
 	}
-    }
 
-    if (!username.len || !domain.len) {
-	LM_ERR
-	    ("Unsupported query - expected a query after username and domain\n");
-	return -1;
-    }
-
-    /*
-    uri_size = username.len + domain.len + 4;
-    if (pres_uri_size < uri_size) {
-	pres_uri_size = uri_size * 2;
-	pres_uri_buf = (char *)pkg_realloc(pres_uri_buf, pres_uri_size);
-	if (pres_uri_buf == NULL) {
-	    LM_ERR("No more private memory\n");
-	    return 0;
+	for (i = 0; i < _nc; i++) {
+	    LM_INFO("presence query return field %s", _c[i]->s);
 	}
-    }
-    */
 
+	if (_n == 2 && _k[0]->len == str_expires_col.len
+			&& strncmp(_k[0]->s, str_expires_col.s, str_expires_col.len) == 0) {
+		LM_DBG("dbk_presence_query goes to dbk_presence_query_expired\n");
+		return dbk_presence_query_expired(_r);
+	}
+
+	if (!username.len || !domain.len) {
+		LM_ERR("Unsupported query - expected a query after username and domain\n");
+		return -1;
+	}
 
 	sprintf(pres_uri_buf, "sip:%.*s@%.*s", username.len, username.s, domain.len, domain.s);
-    pres_uri.s = pres_uri_buf;
-    pres_uri.len = strlen(pres_uri_buf);
+	pres_uri.s = pres_uri_buf;
+	pres_uri.len = strlen(pres_uri_buf);
 
-    LM_DBG("dbk presence query %s\n", pres_uri.s);
+	LM_DBG("dbk presence query %s\n", pres_uri.s);
 
-    db_res = db_new_result();
-    if (db_res == NULL) {
-	LM_ERR("no memory left\n");
-	return -1;
-    }
-    RES_ROW_N(db_res) = 0;
+	db_res = db_new_result();
+	if (db_res == NULL ) {
+		LM_ERR("no memory left\n");
+		return -1;
+	}
+	RES_ROW_N(db_res) = 0;
 
-    memset(body, 0, BLF_MAX_DIALOGS * sizeof(str));
+	memset(body, 0, BLF_MAX_DIALOGS * sizeof(str));
 
-    /* search in hash_table */
-    hash_code = core_hash(&pres_uri, NULL, dbk_phtable_size);
+	/* search in hash_table */
+	hash_code = core_hash(&pres_uri, NULL, dbk_phtable_size);
 
-    lock_get(&dbk_phtable[hash_code].lock);
-    pu = dbk_pres_search_pu(hash_code, &pres_uri, 0, 0);
+	lock_get(&dbk_phtable[hash_code].lock);
+	pu = dbk_pres_search_pu(hash_code, &pres_uri, 0, 0);
 
-    if (pu == NULL) {
-	LM_DBG("No dialog info found for user [%.*s]\n", pres_uri.len,
-	       pres_uri.s);
+	if (pu == NULL ) {
+		LM_DBG("No dialog info found for user [%.*s]\n", pres_uri.len, pres_uri.s);
+
+		lock_release(&dbk_phtable[hash_code].lock);
+
+		*_r = db_res;
+		return 0;
+	}
+
+	LM_DBG("Found presence user record\n");
+	if (pu->pd == NULL ) {
+		LM_ERR("Critical bad data in phtable: pu->pd == NULL\n");
+		goto error1;
+	}
+
+	pd = pu->pd;
+	row_cnt = 0;
+	while (pd != NULL && row_cnt < BLF_MAX_DIALOGS) {
+		body[row_cnt].s = (char *) pkg_malloc(pu->pd->body.len + 1);
+
+		if (body[row_cnt].s == NULL ) {
+			LM_ERR("No more shared memory\n");
+			goto error1;
+		}
+
+		memcpy(body[row_cnt].s, pu->pd->body.s, pu->pd->body.len);
+		body[row_cnt].len = pu->pd->body.len;
+		body[row_cnt].s[body[row_cnt].len] = '\0';
+		pd = pd->next;
+		row_cnt++;
+	}
 
 	lock_release(&dbk_phtable[hash_code].lock);
 
+	LM_DBG("The user %.*s has %d active dialogs\n", pres_uri.len, pres_uri.s, row_cnt);
+
+	RES_COL_N(db_res) = _nc;
+	RES_ROW_N(db_res) = row_cnt;
+
+	if (db_allocate_rows(db_res) < 0) {
+		LM_ERR("Could not allocate rows.\n");
+		goto error2;
+	}
+
+	if (db_allocate_columns(db_res, RES_COL_N(db_res)) != 0) {
+		LM_ERR("Could not allocate columns\n");
+		goto error2;
+	}
+
+	for (col = 0; col < RES_COL_N(db_res); col++) {
+		RES_NAMES(db_res)[col] = (str *) pkg_malloc(sizeof(str));
+
+		if (!RES_NAMES(db_res)[col]) {
+			LM_ERR("no private memory left\n");
+			RES_COL_N(db_res) = col;
+			db_free_columns(db_res);
+			goto error2;
+		}
+
+		LM_DBG("Allocated %lu bytes for RES_NAMES[%d] at %p\n",
+				(unsigned long)sizeof(str), col, RES_NAMES(db_res)[col]);
+
+		RES_NAMES(db_res)[col]->s = _c[col]->s;
+		RES_NAMES(db_res)[col]->len = _c[col]->len;
+		RES_TYPES(db_res)[col] = DB1_STR;
+
+		LM_DBG("RES_NAMES(%p)[%d]=[%.*s]\n", RES_NAMES(db_res)[col], col,
+				RES_NAMES(db_res)[col]->len, RES_NAMES(db_res)[col]->s);
+	}
+
+	for (i = 0; i < row_cnt; i++) {
+		if (db_allocate_row(db_res, &(RES_ROWS(db_res)[i])) != 0) {
+			LM_ERR("Could not allocate row.\n");
+			RES_ROW_N(db_res) = i;
+
+			while (--i >= 0) {
+				RES_ROWS(db_res)[i].values[col].free = 0;
+			}
+
+			goto error2;
+		}
+
+		/* complete the row with the columns */
+		for (col = 0; col < _nc; col++) {
+			LM_DBG("Col[%d]: %.*s\n", col, _c[col]->len, _c[col]->s);
+
+			RES_ROWS(db_res)[0].values[col].type = DB1_STR;
+
+			if (strncmp(_c[col]->s, "body", _c[col]->len) == 0) {
+				RES_ROWS(db_res)[i].values[col].val.str_val = body[i];
+				RES_ROWS(db_res)[i].values[col].free = 1;
+				RES_ROWS(db_res)[i].values[col].nul = 0;
+				LM_DBG("Body in result: [%s]\n",
+						RES_ROWS(db_res)[i].values[col].val.string_val);
+			} else {
+				RES_ROWS(db_res)[i].values[col].val.str_val.s = "";
+				RES_ROWS(db_res)[i].values[col].val.str_val.len = 0;
+				RES_ROWS(db_res)[i].values[col].free = 0;
+				RES_ROWS(db_res)[i].values[col].nul = 1;
+			}
+		}
+	}
+
+	LM_DBG("Returned [%d] rows\n", row_cnt);
 	*_r = db_res;
 	return 0;
-    }
 
-    LM_DBG("Found presence user record\n");
-    if (pu->pd == NULL) {
-	LM_ERR("Critical bad data in phtable: pu->pd == NULL\n");
-	goto error1;
-    }
+	error1:
+	lock_release(&dbk_phtable[hash_code].lock);
 
-    pd = pu->pd;
-    row_cnt = 0;
-    while (pd != NULL && row_cnt < BLF_MAX_DIALOGS) {
-	body[row_cnt].s = (char *)pkg_malloc(pu->pd->body.len + 1);
-
-	if (body[row_cnt].s == NULL) {
-	    LM_ERR("No more shared memory\n");
-	    goto error1;
+	error2:
+	for (i = 0; i < row_cnt; i++) {
+		if (!body[i].s)
+			break;
+		pkg_free(body[i].s);
 	}
 
-	memcpy(body[row_cnt].s, pu->pd->body.s, pu->pd->body.len);
-	body[row_cnt].len = pu->pd->body.len;
-	body[row_cnt].s[body[row_cnt].len] = '\0';
-	pd = pd->next;
-	row_cnt++;
-    }
+	db_free_result(db_res);
 
-    lock_release(&dbk_phtable[hash_code].lock);
-
-    LM_DBG("The user %.*s has %d active dialogs\n", pres_uri.len, pres_uri.s,
-	   row_cnt);
-
-    RES_COL_N(db_res) = _nc;
-    RES_ROW_N(db_res) = row_cnt;
-
-    if (db_allocate_rows(db_res) < 0) {
-	LM_ERR("Could not allocate rows.\n");
-	goto error2;
-    }
-
-    if (db_allocate_columns(db_res, RES_COL_N(db_res)) != 0) {
-	LM_ERR("Could not allocate columns\n");
-	goto error2;
-    }
-
-    for (col = 0; col < RES_COL_N(db_res); col++) {
-	RES_NAMES(db_res)[col] = (str *) pkg_malloc(sizeof(str));
-
-	if (!RES_NAMES(db_res)[col]) {
-	    LM_ERR("no private memory left\n");
-	    RES_COL_N(db_res) = col;
-	    db_free_columns(db_res);
-	    goto error2;
-	}
-
-	LM_DBG("Allocated %lu bytes for RES_NAMES[%d] at %p\n",
-	       (unsigned long)sizeof(str), col, RES_NAMES(db_res)[col]);
-
-	RES_NAMES(db_res)[col]->s = _c[col]->s;
-	RES_NAMES(db_res)[col]->len = _c[col]->len;
-	RES_TYPES(db_res)[col] = DB1_STR;
-
-	LM_DBG("RES_NAMES(%p)[%d]=[%.*s]\n", RES_NAMES(db_res)[col], col,
-	       RES_NAMES(db_res)[col]->len, RES_NAMES(db_res)[col]->s);
-    }
-
-    for (i = 0; i < row_cnt; i++) {
-	if (db_allocate_row(db_res, &(RES_ROWS(db_res)[i])) != 0) {
-	    LM_ERR("Could not allocate row.\n");
-	    RES_ROW_N(db_res) = i;
-
-	    while (--i >= 0) {
-		RES_ROWS(db_res)[i].values[col].free = 0;
-	    }
-
-	    goto error2;
-	}
-
-	/* complete the row with the columns */
-	for (col = 0; col < _nc; col++) {
-	    LM_DBG("Col[%d]: %.*s\n", col, _c[col]->len, _c[col]->s);
-
-	    RES_ROWS(db_res)[0].values[col].type = DB1_STR;
-
-	    if (strncmp(_c[col]->s, "body", _c[col]->len) == 0) {
-		RES_ROWS(db_res)[i].values[col].val.str_val = body[i];
-		RES_ROWS(db_res)[i].values[col].free = 1;
-		RES_ROWS(db_res)[i].values[col].nul = 0;
-		LM_DBG("Body in result: [%s]\n",
-		       RES_ROWS(db_res)[i].values[col].val.string_val);
-	    } else {
-		RES_ROWS(db_res)[i].values[col].val.str_val.s = "";
-		RES_ROWS(db_res)[i].values[col].val.str_val.len = 0;
-		RES_ROWS(db_res)[i].values[col].free = 0;
-		RES_ROWS(db_res)[i].values[col].nul = 1;
-	    }
-	}
-    }
-
-    LM_DBG("Returned [%d] rows\n", row_cnt);
-    *_r = db_res;
-    return 0;
-
- error1:
-    lock_release(&dbk_phtable[hash_code].lock);
-
- error2:
-    for (i = 0; i < row_cnt; i++) {
-	if (!body[i].s)
-	    break;
-	pkg_free(body[i].s);
-    }
-
-    db_free_result(db_res);
-
-    return -1;
+	return -1;
 }
 
 int dbk_dialoginfo_update(const db1_con_t * _h, const db_key_t * db_col,
@@ -1862,10 +1810,13 @@ int dbk_presence_subscribe_new(const db1_con_t * _h, const db_key_t * db_col,
 	}
 
 	if (db_val[i].type == DB1_STR)
-	    LM_DBG("subscribe field %s = %.*s ", db_col[i]->s,
+	    LM_INFO("subscribe field %s = %.*s ", db_col[i]->s,
+		   db_val[i].val.str_val.len, db_val[i].val.str_val.s);
+	if (db_val[i].type == DB1_BLOB)
+	    LM_INFO("subscribe field %s = %.*s ", db_col[i]->s,
 		   db_val[i].val.str_val.len, db_val[i].val.str_val.s);
 	if (db_val[i].type == DB1_INT)
-	    LM_DBG("subscribe field %s = %i ", db_col[i]->s,
+	    LM_INFO("subscribe field %s = %i ", db_col[i]->s,
 		   db_val[i].val.int_val);
     }
 
@@ -1917,7 +1868,6 @@ int dbk_presence_subscribe_new(const db1_con_t * _h, const db_key_t * db_col,
 					      &from_user, &event,
 					      &contact, &callid, &from_tag,
 					      &to_tag);
-
 }
 
 int dbk_presence_subscribe_update(const db1_con_t * _h, const db_key_t * _k,
@@ -1934,9 +1884,6 @@ int dbk_presence_subscribe_update(const db1_con_t * _h, const db_key_t * _k,
     struct cell *t;
     pv_value_t value;
     value.rs.len = 0;
-
-    if (_un == 4)
-	return 0;
 
     for (i = 0; i < _n; i++) {
 	if (_k[i]->len == str_presentity_uri_col.len &&
@@ -1965,10 +1912,13 @@ int dbk_presence_subscribe_update(const db1_con_t * _h, const db_key_t * _k,
 	}
 
 	if (_v[i].type == DB1_STR)
-	    LM_DBG("subscribe field %s = %.*s ", _k[i]->s,
+	    LM_INFO("subscribe update field %s = %.*s ", _k[i]->s,
+		   _v[i].val.str_val.len, _v[i].val.str_val.s);
+	if (_v[i].type == DB1_BLOB)
+	    LM_INFO("subscribe update field %s = %.*s ", _k[i]->s,
 		   _v[i].val.str_val.len, _v[i].val.str_val.s);
 	if (_v[i].type == DB1_INT)
-	    LM_DBG("subscribe field %s = %i ", _k[i]->s, _v[i].val.int_val);
+	    LM_INFO("subscribe update field %s = %i ", _k[i]->s, _v[i].val.int_val);
 
     }
 
@@ -1987,12 +1937,18 @@ int dbk_presence_subscribe_update(const db1_con_t * _h, const db_key_t * _k,
 	}
 
 	if (_uv[i].type == DB1_STR)
-	    LM_DBG("subscribe field %s = %.*s ", _uk[i]->s,
+	    LM_INFO("subscribe update field %s = %.*s ", _uk[i]->s,
+		   _uv[i].val.str_val.len, _uv[i].val.str_val.s);
+	if (_uv[i].type == DB1_BLOB)
+	    LM_INFO("subscribe update field %s = %.*s ", _uk[i]->s,
 		   _uv[i].val.str_val.len, _uv[i].val.str_val.s);
 	if (_uv[i].type == DB1_INT)
-	    LM_DBG("subscribe field %s = %i ", _uk[i]->s, _uv[i].val.int_val);
+	    LM_INFO("subscribe update field %s = %i ", _uk[i]->s, _uv[i].val.int_val);
 
     }
+
+    if (_un == 4)
+	return 0;
 
     /* get user from sht */
     t = tmb.t_gett();
@@ -2053,3 +2009,4 @@ int dbk_presence_subscribe_update(const db1_con_t * _h, const db_key_t * _k,
 					      &to_tag);
 
 }
+
