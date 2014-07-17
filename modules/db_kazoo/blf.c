@@ -1308,21 +1308,21 @@ int dbk_presence_query(const db1_con_t * _h, const db_key_t * _k,
 		}
 
 		if (_v[i].type == DB1_STR) {
-		    LM_INFO("presence query field %s %s %.*s ", _k[i]->s, (_op && _op[i] ? _op[i] : "="),
+		    LM_DBG("presence query field %s %s %.*s ", _k[i]->s, (_op && _op[i] ? _op[i] : "="),
 			   _v[i].val.str_val.len, _v[i].val.str_val.s);
 		} else if (_v[i].type == DB1_BLOB) {
-		    LM_INFO("presence query field %s %s %.*s ", _k[i]->s, (_op && _op[i] ? _op[i] : "="),
+		    LM_DBG("presence query field %s %s %.*s ", _k[i]->s, (_op && _op[i] ? _op[i] : "="),
 			   _v[i].val.str_val.len, _v[i].val.str_val.s);
 		} else if (_v[i].type == DB1_INT) {
-		    LM_INFO("presence query field %s %s %i ", _k[i]->s, (_op && _op[i] ? _op[i] : "="),
+		    LM_DBG("presence query field %s %s %i ", _k[i]->s, (_op && _op[i] ? _op[i] : "="),
 			   _v[i].val.int_val);
 		} else {
-		    LM_INFO("presence query other field %s %s %i ", _k[i]->s, (_op && _op[i] ? _op[i] : "="), _v[i].type);
+		    LM_DBG("presence query other field %s %s %i ", _k[i]->s, (_op && _op[i] ? _op[i] : "="), _v[i].type);
 		}
 	}
 
 	for (i = 0; i < _nc; i++) {
-	    LM_INFO("presence query return field %s", _c[i]->s);
+	    LM_DBG("presence query return field %s", _c[i]->s);
 	}
 
 	if (_n == 2 && _k[0]->len == str_expires_col.len
@@ -1810,13 +1810,13 @@ int dbk_presence_subscribe_new(const db1_con_t * _h, const db_key_t * db_col,
 	}
 
 	if (db_val[i].type == DB1_STR)
-	    LM_INFO("subscribe field %s = %.*s ", db_col[i]->s,
+	    LM_DBG("subscribe field %s = %.*s ", db_col[i]->s,
 		   db_val[i].val.str_val.len, db_val[i].val.str_val.s);
 	if (db_val[i].type == DB1_BLOB)
-	    LM_INFO("subscribe field %s = %.*s ", db_col[i]->s,
+	    LM_DBG("subscribe field %s = %.*s ", db_col[i]->s,
 		   db_val[i].val.str_val.len, db_val[i].val.str_val.s);
 	if (db_val[i].type == DB1_INT)
-	    LM_INFO("subscribe field %s = %i ", db_col[i]->s,
+	    LM_DBG("subscribe field %s = %i ", db_col[i]->s,
 		   db_val[i].val.int_val);
     }
 
@@ -1912,13 +1912,13 @@ int dbk_presence_subscribe_update(const db1_con_t * _h, const db_key_t * _k,
 	}
 
 	if (_v[i].type == DB1_STR)
-	    LM_INFO("subscribe update field %s = %.*s ", _k[i]->s,
+	    LM_DBG("subscribe update field %s = %.*s ", _k[i]->s,
 		   _v[i].val.str_val.len, _v[i].val.str_val.s);
 	if (_v[i].type == DB1_BLOB)
-	    LM_INFO("subscribe update field %s = %.*s ", _k[i]->s,
+	    LM_DBG("subscribe update field %s = %.*s ", _k[i]->s,
 		   _v[i].val.str_val.len, _v[i].val.str_val.s);
 	if (_v[i].type == DB1_INT)
-	    LM_INFO("subscribe update field %s = %i ", _k[i]->s, _v[i].val.int_val);
+	    LM_DBG("subscribe update field %s = %i ", _k[i]->s, _v[i].val.int_val);
 
     }
 
@@ -1937,13 +1937,13 @@ int dbk_presence_subscribe_update(const db1_con_t * _h, const db_key_t * _k,
 	}
 
 	if (_uv[i].type == DB1_STR)
-	    LM_INFO("subscribe update field %s = %.*s ", _uk[i]->s,
+	    LM_DBG("subscribe update field %s = %.*s ", _uk[i]->s,
 		   _uv[i].val.str_val.len, _uv[i].val.str_val.s);
 	if (_uv[i].type == DB1_BLOB)
-	    LM_INFO("subscribe update field %s = %.*s ", _uk[i]->s,
+	    LM_DBG("subscribe update field %s = %.*s ", _uk[i]->s,
 		   _uv[i].val.str_val.len, _uv[i].val.str_val.s);
 	if (_uv[i].type == DB1_INT)
-	    LM_INFO("subscribe update field %s = %i ", _uk[i]->s, _uv[i].val.int_val);
+	    LM_DBG("subscribe update field %s = %i ", _uk[i]->s, _uv[i].val.int_val);
 
     }
 
