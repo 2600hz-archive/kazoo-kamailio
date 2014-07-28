@@ -5,6 +5,7 @@
 #include "../../mi/mi_types.h"
 #include "dbase.h"
 #include "const.h"
+#include "defs.h"
 
 typedef struct dbk_presentity {
 	str domain;

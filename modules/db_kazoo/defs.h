@@ -55,6 +55,11 @@
     </dm:person> \
 </presence>"
 
-
+#define DIALOG_EMPTY_BODY "<?xml version=\"1.0\" encoding=\"UTF-8\"?> \
+		<dialog-info xmlns=\"urn:ietf:params:xml:ns:dialog-info\" version=\"1\" state=\"full\" entity=\"sip:%s@%s\"> \
+		  <dialog direction=\"initiator\"> \
+		    <state>terminated</state> \
+		  </dialog> \
+		</dialog-info>"
 
 #endif /* DBK_DEFS_H_ */

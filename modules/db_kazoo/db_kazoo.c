@@ -54,6 +54,7 @@ int dbk_presentity_phtable_size = 4096;
 int dbk_dialog_expires = 30;
 int dbk_presence_expires = 3600;
 int dbk_mwi_expires = 3600;
+int dbk_create_empty_dialog = 0;
 
 struct tm_binds tmb;
 
@@ -75,6 +76,7 @@ static param_export_t params[] = {
     {"dialog_expires", INT_PARAM, &dbk_dialog_expires},
     {"presence_expires", INT_PARAM, &dbk_presence_expires},
     {"mwi_expires", INT_PARAM, &dbk_mwi_expires},
+    {"create_empty_dialog", INT_PARAM, &dbk_create_empty_dialog},
     {0, 0, 0}
 };
 

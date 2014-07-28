@@ -27,6 +27,7 @@
 
 static dbk_presentity_htable_t *dbk_presentity_phtable = NULL;
 extern int dbk_presentity_phtable_size;
+extern int dbk_create_empty_dialog;
 
 void dbk_free_presentity(dbk_presentity_t * pu) {
     shm_free(pu);
@@ -439,32 +440,25 @@ struct mi_root *mi_dbk_presentity_dump(struct mi_root *cmd_tree, void *param) {
 #define DBK_DBOP(i) (_op && _op[i] ? _op[i] : "=")
 
 int dbk_presentity_query_expired(db1_res_t ** _r) {
-    /* TODO delete expired record */
-
     db1_res_t *db_res = db_new_result();
     if (db_res == NULL) {
 	LM_ERR("no memory left\n");
 	return -1;
     }
     RES_ROW_N(db_res) = 0;
-
     *_r = db_res;
     return 0;
 }
 
 int copy_column(str* Col, str* StrValue) {
-
 	Col->s = (char *) pkg_malloc(StrValue->len + 1);
-
 	if (Col->s == NULL ) {
 		LM_ERR("No more shared memory\n");
 		return 0;
 	}
-
 	memcpy(Col->s, StrValue->s, StrValue->len);
 	Col->len = StrValue->len;
 	Col->s[Col->len] = '\0';
-
 	return 1;
 }
 
@@ -474,12 +468,13 @@ int dbk_presentity_query(const db1_con_t * _h, const db_key_t * _k,
 
 	str username = { 0, 0 };
 	str domain = { 0, 0 };
-	str event = { 0, 0 };
+	str event = { 0, 0 }, emptyString = {0, 0}, body = { 0, 0 };
 	int i;
 	unsigned int hash_code;
 	str pres_uri;
 	char pres_uri_buf[1024];
-	dbk_presentity_t *pu, *pu_iterator;
+	char pres_body_buf[1024];
+	dbk_presentity_t *pu, *pu_iterator, *pu_empty = NULL;
 	db1_res_t *db_res = NULL;
 	int col;
 	int row_cnt = 0;
@@ -542,10 +537,17 @@ int dbk_presentity_query(const db1_con_t * _h, const db_key_t * _k,
 	pu = dbk_presentity_search(hash_code, &event, &domain, &username, 0, 0);
 
 	if (pu == NULL ) {
-		LM_DBG("No dialog info found for user [%.*s]\n", pres_uri.len, pres_uri.s);
-		lock_release(&dbk_presentity_phtable[hash_code].lock);
-		*_r = db_res;
-		return 0;
+		if(dbk_create_empty_dialog != 0 && strncmp(event.s, str_event_dialog.s, event.len) == 0) {
+			sprintf(pres_body_buf, DIALOG_EMPTY_BODY, username.s, domain.s);
+			body.s = pres_body_buf;
+			body.len = strlen(pres_body_buf);
+			pu = pu_empty = dbk_presentity_htable_new(&event, &domain, &username, &emptyString, &emptyString, &body, 0, 0);
+		} else {
+			LM_INFO("No dialog info found for user [%.*s]\n", pres_uri.len, pres_uri.s);
+			lock_release(&dbk_presentity_phtable[hash_code].lock);
+			*_r = db_res;
+			return 0;
+		}
 	}
 
 	LM_DBG("Found presentity record\n");
@@ -648,9 +650,14 @@ int dbk_presentity_query(const db1_con_t * _h, const db_key_t * _k,
 	lock_release(&dbk_presentity_phtable[hash_code].lock);
 	LM_DBG("Returned [%d] rows\n", row_cnt);
 	*_r = db_res;
+	if(pu_empty)
+		dbk_free_presentity(pu_empty);
 	return 0;
 
 	error1:
+	if(pu_empty)
+		dbk_free_presentity(pu_empty);
+
 	lock_release(&dbk_presentity_phtable[hash_code].lock);
 
 	db_free_result(db_res);
