@@ -59,12 +59,13 @@ int kz_json_get_field(struct sip_msg* msg, char* json, char* field, char* dst)
 	}
 
 	struct json_object *j_field = json_object_object_get(j, field_s.s);
-	char *value = (char*)json_object_get_string(j_field);
-
-	dst_val.rs.s = value;
-	dst_val.rs.len = strlen(value);
-	dst_val.flags = PV_VAL_STR;
-	dst_pv->setf(msg, &dst_pv->pvp, (int)EQ_T, &dst_val);
+	if(j_field != NULL) {
+		char *value = (char*)json_object_get_string(j_field);
+		dst_val.rs.s = value;
+		dst_val.rs.len = strlen(value);
+		dst_val.flags = PV_VAL_STR;
+		dst_pv->setf(msg, &dst_pv->pvp, (int)EQ_T, &dst_val);
+	}
 
 	json_object_put(j);
 
