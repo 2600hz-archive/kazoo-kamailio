@@ -43,7 +43,7 @@ static amqp_bytes_t blf_queue;
 
 str sht_name = str_init("$sht(dbkp=>$ci)");
 pv_spec_t sht_spec;
-char node_name[128];
+static char node_name[128];
 
 extern int dbk_dialog_expires;
 extern int dbk_presence_expires;
@@ -119,8 +119,7 @@ int dbk_initialize_presence() {
 			    dbk_node_hostname.len, dbk_node_hostname.s,
 			    unique_string.len, unique_string.s);
 
-    sprintf(node_name, "kamailio@%.*s", dbk_node_hostname.len,
-	    dbk_node_hostname.s);
+    sprintf(node_name, "kamailio@%.*s", dbk_node_hostname.len, dbk_node_hostname.s);
     return 0;
 }
 

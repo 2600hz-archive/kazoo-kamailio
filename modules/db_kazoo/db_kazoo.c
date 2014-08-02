@@ -38,6 +38,9 @@
 #include "dbase.h"
 #include "blf.h"
 #include "presentity.h"
+#include "kz_amqp.h"
+#include "kz_json.h"
+#include "kz_fixup.h"
 
 static int mod_init(void);
 static void mod_destroy(void);
@@ -54,7 +57,7 @@ int dbk_presentity_phtable_size = 4096;
 int dbk_dialog_expires = 30;
 int dbk_presence_expires = 3600;
 int dbk_mwi_expires = 3600;
-int dbk_create_empty_dialog = 0;
+int dbk_create_empty_dialog = 1;
 
 struct tm_binds tmb;
 
@@ -63,8 +66,11 @@ MODULE_VERSION
  *  database module interface
  */
 static cmd_export_t cmds[] = {
-    {"db_bind_api", (cmd_function) db_kazoo_bind_api, 0, 0, 0},
-    {0, 0, 0, 0, 0}
+    {"db_bind_api", (cmd_function) db_kazoo_bind_api, 0, 0, 0, 0},
+    {"kazoo_publish", (cmd_function) kz_amqp_publish, 3, fixup_kz_amqp, fixup_kz_amqp_free, ANY_ROUTE},
+    {"kazoo_query", (cmd_function) kz_amqp_query, 4, fixup_kz_amqp, fixup_kz_amqp_free, ANY_ROUTE},
+    {"kazoo_json", (cmd_function) kz_json_get_field, 3, fixup_kz_json, fixup_kz_json_free, ANY_ROUTE},
+    {0, 0, 0, 0, 0, 0}
 };
 
 static param_export_t params[] = {
@@ -77,6 +83,7 @@ static param_export_t params[] = {
     {"presence_expires", INT_PARAM, &dbk_presence_expires},
     {"mwi_expires", INT_PARAM, &dbk_mwi_expires},
     {"create_empty_dialog", INT_PARAM, &dbk_create_empty_dialog},
+    {"amqp_connection", STR_PARAM|USE_FUNC_PARAM,(void*)kz_amqp_add_connection},
     {0, 0, 0}
 };
 
@@ -192,3 +199,5 @@ static void mod_destroy(void) {
     dbk_destroy_presence();
     dbk_presentity_destroy();
 }
+
+

@@ -35,22 +35,14 @@ void rmq_close(rmq_conn_t * rmq) {
     }
 
     if (rmq->conn) {
-	LM_DBG("close connection:  %d rmq(%p)->conn(%p)\n", getpid(),
-	       (void *)rmq, rmq->conn);
-	rmq_error("closing connection",
-		  amqp_connection_close(rmq->conn, AMQP_REPLY_SUCCESS));
-
-	if (amqp_destroy_connection(rmq->conn) < 0) {
-	    LM_ERR("cannot destroy connection\n");
-	}
-	rmq->conn = NULL;
-	rmq->socket = NULL;
-	rmq->channel = 0;
-    } else if (rmq->socket) {
-	LM_DBG("close socket: %d rmq(%p)->socket(%p)\n", getpid(), (void *)rmq,
-	       (void *)rmq->socket);
-	amqp_socket_close(rmq->socket);
-	rmq->socket = NULL;
+    	LM_DBG("close connection:  %d rmq(%p)->conn(%p)\n", getpid(), (void *)rmq, rmq->conn);
+    	rmq_error("closing connection", amqp_connection_close(rmq->conn, AMQP_REPLY_SUCCESS));
+    	if (amqp_destroy_connection(rmq->conn) < 0) {
+    		LM_ERR("cannot destroy connection\n");
+    	}
+		rmq->conn = NULL;
+		rmq->socket = NULL;
+		rmq->channel = 0;
     }
 }
 
@@ -58,24 +50,21 @@ int rmqp_open_connection(rmq_conn_t * rmq) {
     LM_DBG("%d rmq:%p  conn:%p  socket:%p  channel:%d\n", getpid(), (void *)rmq,
 	   rmq->conn, (void *)rmq->socket, rmq->channel);
 
-    rmq->socket = amqp_tcp_socket_new();
-    if (!rmq->socket) {
-	LM_DBG("Failed to create TCP socket to AMQP broker\n");
-	goto error;
-    }
-
-    /* TODO - take as module parameters */
-    if (amqp_socket_open(rmq->socket, rmq->id->host, rmq->id->port)) {
-	LM_DBG("Failed to open TCP socket to AMQP broker\n");
-	goto error;
-    }
-
     if (!(rmq->conn = amqp_new_connection())) {
 	LM_DBG("Failed to create new AMQP connection\n");
 	goto error;
     }
 
-    amqp_set_socket(rmq->conn, rmq->socket);
+    rmq->socket = amqp_tcp_socket_new(rmq->conn);
+    if (!rmq->socket) {
+	LM_DBG("Failed to create TCP socket to AMQP broker\n");
+	goto error;
+    }
+
+    if (amqp_socket_open(rmq->socket, rmq->id->host, rmq->id->port)) {
+	LM_DBG("Failed to open TCP socket to AMQP broker\n");
+	goto error;
+    }
 
     if (rmq_error("Logging in", amqp_login(rmq->conn,
 					   "/",
