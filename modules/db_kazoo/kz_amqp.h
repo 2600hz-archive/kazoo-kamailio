@@ -36,7 +36,7 @@ int kz_amqp_add_connection(modparam_t type, void* val);
 
 int kz_amqp_publish(struct sip_msg* msg, char* exchange, char* routing_key, char* payload);
 int kz_amqp_query(struct sip_msg* msg, char* exchange, char* routing_key, char* payload, char* dst);
-
+int kz_amqp_encode(struct sip_msg* msg, char* unencoded, char* encoded);
 
 
 #endif /* KZ_AMQP_H_ */

@@ -14,5 +14,7 @@ int fixup_kz_amqp_free(void** param, int param_no);
 int fixup_kz_json(void** param, int param_no);
 int fixup_kz_json_free(void** param, int param_no);
 
+int fixup_kz_amqp_encode(void** param, int param_no);
+int fixup_kz_amqp_encode_free(void** param, int param_no);
 
 #endif /* KZ_FIXUP_H_ */

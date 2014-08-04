@@ -32,12 +32,65 @@
 #include "kz_json.h"
 
 
+char** str_split(char* a_str, const char a_delim)
+{
+    char** result    = 0;
+    size_t count     = 0;
+    char* tmp        = a_str;
+    char* last_comma = 0;
+    char delim[2];
+    delim[0] = a_delim;
+    delim[1] = 0;
+
+    /* Count how many elements will be extracted. */
+    while (*tmp)
+    {
+        if (a_delim == *tmp)
+        {
+            count++;
+            last_comma = tmp;
+        }
+        tmp++;
+    }
+
+    /* Add space for trailing token. */
+    count += last_comma < (a_str + strlen(a_str) - 1);
+
+    /* Add space for terminating null string so caller
+       knows where the list of returned strings ends. */
+    count++;
+
+    result = malloc(sizeof(char*) * count);
+
+    if (result)
+    {
+        size_t idx  = 0;
+        char* token = strtok(a_str, delim);
+
+        while (token)
+        {
+            assert(idx < count);
+            *(result + idx++) = strdup(token);
+            token = strtok(0, delim);
+        }
+        assert(idx == count - 1);
+        *(result + idx) = 0;
+    }
+
+    return result;
+}
+
+
 int kz_json_get_field(struct sip_msg* msg, char* json, char* field, char* dst)
 {
   str json_s;
   str field_s;
   pv_spec_t *dst_pv;
   pv_value_t dst_val;
+  char** tokens;
+  char* dup;
+  char f1[25], f2[25], f3[25];
+  int i;
 
 	if (fixup_get_svalue(msg, (gparam_p)json, &json_s) != 0) {
 		LM_ERR("cannot get json string value\n");
@@ -58,14 +111,52 @@ int kz_json_get_field(struct sip_msg* msg, char* json, char* field, char* dst)
 		return -1;
 	}
 
-	struct json_object *j_field = json_object_object_get(j, field_s.s);
-	if(j_field != NULL) {
-		char *value = (char*)json_object_get_string(j_field);
+	struct json_object *jtree = NULL;
+
+	dup = strdup(field_s.s);
+    tokens = str_split(dup, '.');
+    free(dup);
+
+    if (tokens)
+    {
+    	jtree = j;
+        for (i = 0; *(tokens + i); i++)
+        {
+        	if(jtree != NULL) {
+				str field = str_init(*(tokens + i));
+				// check for idx []
+				int sresult = sscanf(field.s, "%[^[][%[^]]]", f1, f2, f3);
+				LM_DBG("CHECK IDX %d - %s , %s, %s\n", sresult, field.s, f1, f2);
+
+				jtree = json_object_object_get(jtree, f1);
+				if(jtree != NULL) {
+					char *value = (char*)json_object_get_string(jtree);
+					LM_DBG("JTREE OK %s\n", value);
+				}
+				if(jtree != NULL && sresult > 1 && json_object_is_type(jtree, json_type_array)) {
+					int idx = atoi(f2);
+					jtree = json_object_array_get_idx(jtree, idx);
+					if(jtree != NULL) {
+						char *value = (char*)json_object_get_string(jtree);
+						LM_DBG("JTREE IDX OK %s\n", value);
+					}
+				}
+        	}
+            free(*(tokens + i));
+        }
+        free(tokens);
+    }
+
+	if(jtree != NULL) {
+		char *value = (char*)json_object_get_string(jtree);
 		dst_val.rs.s = value;
 		dst_val.rs.len = strlen(value);
 		dst_val.flags = PV_VAL_STR;
-		dst_pv->setf(msg, &dst_pv->pvp, (int)EQ_T, &dst_val);
+	} else {
+		dst_val.flags = PV_VAL_NULL;
 	}
+
+	dst_pv->setf(msg, &dst_pv->pvp, (int)EQ_T, &dst_val);
 
 	json_object_put(j);
 

@@ -227,6 +227,8 @@ void kz_amqp_consume_error(amqp_rpc_reply_t ret, amqp_connection_state_t conn)
 	}
 }
 
+
+
 int kz_amqp_send(str *str_exchange, str *str_routing_key, str *str_payload)
 {
 	amqp_bytes_t exchange;
@@ -418,7 +420,6 @@ int kz_amqp_send_receive(str *str_exchange, str *str_routing_key, str *str_paylo
     return ret;
 }
 
-
 int kz_amqp_publish(struct sip_msg* msg, char* exchange, char* routing_key, char* payload)
 {
 	  str json_s;
@@ -506,3 +507,62 @@ int kz_amqp_query(struct sip_msg* msg, char* exchange, char* routing_key, char* 
 		return 1;
 
 };
+
+#define KEY_SAFE(C)  ((C >= 'a' && C <= 'z') || \
+                      (C >= 'A' && C <= 'Z') || \
+                      (C >= '0' && C <= '9') || \
+                      (C == '-' || C == '~'  || C == '_'))
+
+#define HI4(C) (C>>4)
+#define LO4(C) (C & 0x0F)
+
+#define hexint(C) (C < 10?('0' + C):('A'+ C - 10))
+
+char *kz_amqp_util_encode(const str * key, char *dest) {
+    if ((key->len == 1) && (key->s[0] == '#' || key->s[0] == '*')) {
+	*dest++ = key->s[0];
+	return dest;
+    }
+    char *p, *end;
+    for (p = key->s, end = key->s + key->len; p < end; p++) {
+	if (KEY_SAFE(*p)) {
+	    *dest++ = *p;
+	} else if (*p == '.') {
+	    memcpy(dest, "\%2E", 3);
+	    dest += 3;
+	} else if (*p == ' ') {
+	    *dest++ = '+';
+	} else {
+	    *dest++ = '%';
+	    sprintf(dest, "%c%c", hexint(HI4(*p)), hexint(LO4(*p)));
+	    dest += 2;
+	}
+    }
+    *dest = '\0';
+    return dest;
+}
+
+int kz_amqp_encode(struct sip_msg* msg, char* unencoded, char* encoded)
+{
+	char routing_key_buff[256];
+    str unencoded_s;
+	pv_spec_t *dst_pv;
+	pv_value_t dst_val;
+	dst_pv = (pv_spec_t *)encoded;
+
+	if (fixup_get_svalue(msg, (gparam_p)unencoded, &unencoded_s) != 0) {
+		LM_ERR("cannot get unencoded string value\n");
+		return -1;
+	}
+
+	memset(routing_key_buff,0, sizeof(routing_key_buff));
+	kz_amqp_util_encode(&unencoded_s, routing_key_buff);
+	dst_val.rs.s = routing_key_buff;
+	dst_val.rs.len = strlen(routing_key_buff);
+	dst_val.flags = PV_VAL_STR;
+	dst_pv->setf(msg, &dst_pv->pvp, (int)EQ_T, &dst_val);
+
+	return 1;
+
+}
+
