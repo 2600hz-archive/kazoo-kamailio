@@ -16,6 +16,7 @@
 
 #include "dbase.h"
 #include "blf.h"
+#include "presentity.h"
 
 int connections = 0;
 
@@ -661,12 +662,12 @@ int db_kazoo_query(const db1_con_t * _h, const db_key_t * _k,
 	return -1;
     }
 
-    LM_INFO("query table=%s\n", _h->table->s);
+    LM_DBG("query table=%s\n", _h->table->s);
 
     if (strncmp(_h->table->s, "subscriber", 10) == 0) {
 	return dbk_credentials_query(_h, _k, _v, _c, _n, _nc, _r);
     } else if (strncmp(_h->table->s, "presentity", 10) == 0) {
-	return dbk_presence_query(_h, _k, _v, _c, _n, _nc, _r);
+	return dbk_presentity_query(_h, _k, _op, _v, _c, _n, _nc, _o, _r);
     } else {
 	LM_DBG("Not supported\n");
 	*_r = db_empty_result();
@@ -903,12 +904,14 @@ int db_kazoo_insert(const db1_con_t * _h, const db_key_t * _k,
 	return -1;
     }
 
-    LM_INFO("insert into table=%s\n", _h->table->s);
+    LM_DBG("insert into table=%s\n", _h->table->s);
 
     if (strncmp(_h->table->s, "location", _h->table->len) == 0) {
 	return amqp_register_notice(_h, _k, _v, _n);
     } else if (strncmp(_h->table->s, "active_watchers", _h->table->len) == 0) {
 	return dbk_presence_subscribe_new(_h, _k, _v, _n);
+    } else if (strncmp(_h->table->s, "presentity", _h->table->len) == 0) {
+	return dbk_presentity_new(_h, _k, _v, _n);
     } else {
 	LM_DBG("Not supported\n");
 	return 0;
@@ -922,7 +925,7 @@ int db_kazoo_insert_update(const db1_con_t * _h, const db_key_t * _k,
 	return -1;
     }
 
-    LM_INFO("insert_update into table=%s\n", _h->table->s);
+    LM_DBG("insert_update into table=%s\n", _h->table->s);
 
     if (strncmp(_h->table->s, "dialoginfo", _h->table->len) == 0) {
 	LM_DBG("Insert update called for dialoginfo table\n");
@@ -937,15 +940,31 @@ int db_kazoo_update(const db1_con_t * _h, const db_key_t * _k,
 		    const db_op_t * _o, const db_val_t * _v,
 		    const db_key_t * _uk, const db_val_t * _uv,
                     const int _n, const int _un) {
-    LM_INFO("update table=%s\n", _h->table->s);
+    LM_DBG("update table=%s\n", _h->table->s);
     if (strncmp(_h->table->s, "active_watchers", _h->table->len) == 0) {
-	LM_DBG("Update called for active_watchers table\n");
-	return dbk_presence_subscribe_update(_h, _k, _v, _uk, _uv, _n, _un);
+    	LM_DBG("Update called for active_watchers table\n");
+    	return dbk_presence_subscribe_update(_h, _k, _v, _uk, _uv, _n, _un);
+    } else if (strncmp(_h->table->s, "presentity", _h->table->len) == 0) {
+    	LM_DBG("Update called for active_watchers table\n");
+        return dbk_presentity_update(_h, _k, _o, _v, _uk, _uv, _n, _un);
+    } else {
+    	LM_DBG("Not supported\n");
+	return 0;
+    }
+}
+
+int db_kazoo_delete(const db1_con_t * _h, const db_key_t * _k,
+		    const db_op_t * _o, const db_val_t * _v, const int _n) {
+    LM_DBG("delete table=%s\n", _h->table->s);
+    if (strncmp(_h->table->s, "presentity", _h->table->len) == 0) {
+	LM_DBG("delete called for presentity table\n");
+	return dbk_presentity_delete(_h, _k,_o, _v, _n);
     } else {
 	LM_DBG("Not supported\n");
 	return 0;
     }
 }
+
 
 int dbk_rmq_wait_for_data(amqp_connection_state_t conn) {
     struct timeval timeout;

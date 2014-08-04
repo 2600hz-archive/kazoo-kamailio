@@ -91,6 +91,9 @@ int db_kazoo_update (const db1_con_t* _h, const db_key_t* _k, const db_op_t* _o,
 				const db_val_t* _v, const db_key_t* _uk, const db_val_t* _uv,
 				const int _n, const int _un);
 
+int db_kazoo_delete(const db1_con_t * _h, const db_key_t * _k,
+		    const db_op_t * _o, const db_val_t * _v, const int _n);
+
 int dbk_rmq_wait_for_data(amqp_connection_state_t conn);
 
 void rmq_close(rmq_conn_t* rmq);
