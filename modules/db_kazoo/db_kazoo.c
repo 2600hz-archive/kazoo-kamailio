@@ -136,6 +136,8 @@ static int mod_init(void) {
 
     dbk_presentity_initialize();
 
+//    kz_amqp_get_connection();
+
     return 0;
 }
 

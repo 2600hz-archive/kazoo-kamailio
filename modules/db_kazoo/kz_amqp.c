@@ -67,7 +67,11 @@ void kz_amqp_connection_close(kz_amqp_conn_ptr rmq) {
 		rmq->conn = NULL;
 		rmq->socket = NULL;
 		rmq->channel_count = 0;
+
+	   	lock_release(&kz_pool->lock);
+
     }
+
 }
 
 void kz_amqp_channel_close(kz_amqp_conn_ptr rmq, amqp_channel_t channel) {
@@ -160,7 +164,9 @@ kz_amqp_conn_ptr kz_amqp_get_connection() {
 		ptr = ptr->next;
 	}
 	}
-   	lock_release(&kz_pool->lock);
+
+//	lock_release(&kz_pool->lock);
+
    	return ptr;
 }
 
@@ -227,28 +233,74 @@ void kz_amqp_consume_error(amqp_rpc_reply_t ret, amqp_connection_state_t conn)
 	}
 }
 
-
+typedef struct json_object *json_obj_ptr;
 
 int kz_amqp_send(str *str_exchange, str *str_routing_key, str *str_payload)
 {
 	amqp_bytes_t exchange;
 	amqp_bytes_t routing_key;
 	amqp_bytes_t amqp_mb;
-	int ret = -1;
+	int ret = 1;
+    kz_amqp_conn_ptr kz_conn = NULL;
+    amqp_channel_t channel = 0;
+    json_obj_ptr json_obj = NULL;
+    char serverid[512];
+    char node_name[512];
+    str unique_string = { 0, 0 };
+
+	/* send to rabbitmq */
+
+    /* parse json  and add extra fields */
+    json_obj = json_tokener_parse(str_payload->s);
+    if (is_error(json_obj))
+    {
+		LM_ERR("Error parsing json: %s\n",json_tokener_errors[-(unsigned long)json_obj]);
+		LM_ERR("%s\n", str_payload->s);
+		goto error;
+    }
 
     exchange = amqp_cstring_bytes(str_exchange->s);
     routing_key = amqp_cstring_bytes(str_routing_key->s);
-    amqp_mb = amqp_cstring_bytes(str_payload->s);
 
-	/* send to rabbitmq */
+    tmb.generate_callid(&unique_string);
+    sprintf(serverid, "kamailio@%.*s-<%d>-script-%lu", dbk_node_hostname.len, dbk_node_hostname.s, my_pid(), rpl_query_routing_key_count++);
+
+    json_object_object_add(json_obj, BLF_JSON_APP_NAME,
+			   json_object_new_string(NAME));
+    json_object_object_add(json_obj, BLF_JSON_APP_VERSION,
+			   json_object_new_string(VERSION));
+    sprintf(node_name, "kamailio@%.*s", dbk_node_hostname.len, dbk_node_hostname.s);
+    json_object_object_add(json_obj, BLF_JSON_NODE,
+			   json_object_new_string(node_name));
+    json_object_object_add(json_obj, BLF_JSON_SERVERID,
+			   json_object_new_string(serverid));
+    json_object_object_add(json_obj, BLF_JSON_MSG_ID,
+			   json_object_new_string_len(unique_string.s, unique_string.len));
+
+    amqp_mb.bytes = (char *)json_object_to_json_string(json_obj);
+    if (amqp_mb.bytes == NULL)
+    {
+		LM_ERR("Failed to get json string\n");
+		goto error;
+    }
+    amqp_mb.len = strlen(amqp_mb.bytes);
+    LM_DBG("AMQP: body: %.*s\n", (int)amqp_mb.len, (char *)amqp_mb.bytes);
 
 	amqp_basic_properties_t props;
 	memset(&props, 0, sizeof(amqp_basic_properties_t));
 	props._flags = AMQP_BASIC_CONTENT_TYPE_FLAG;
 	props.content_type = amqp_cstring_bytes("application/json");
 
-	kz_amqp_conn_ptr kz_conn = kz_amqp_get_connection();
-	amqp_channel_t channel = kz_amqp_channel_open(kz_conn);
+    kz_conn = kz_amqp_get_connection();
+	if(kz_conn == NULL) {
+		ret = -1;
+		goto error;
+	}
+	channel = kz_amqp_channel_open(kz_conn);
+	if(channel == 0) {
+		ret = -1;
+		goto error;
+	}
 
 	amqp_basic_publish(kz_conn->conn, channel, exchange, routing_key, 0, 0, &props, amqp_mb);
 
@@ -257,13 +309,18 @@ int kz_amqp_send(str *str_exchange, str *str_routing_key, str *str_payload)
 		ret = 0;
 	}
 
-	kz_amqp_channel_close(kz_conn, channel);
+	error:
+	if(channel != 0) {
+		kz_amqp_channel_close(kz_conn, channel);
+	}
 	kz_amqp_connection_close(kz_conn); // for now
+
+    if(json_obj)
+    	json_object_put(json_obj);
 
 	return ret;
 }
 
-typedef struct json_object *json_obj_ptr;
 
 int kz_amqp_send_receive(str *str_exchange, str *str_routing_key, str *str_payload, json_obj_ptr* json_ret )
 {
@@ -288,7 +345,7 @@ int kz_amqp_send_receive(str *str_exchange, str *str_routing_key, str *str_paylo
     memset(&envelope, 0, sizeof(amqp_envelope_t));
     memset(&msg, 0, sizeof(amqp_envelope_t));
 
-    /* extract info from json and construct xml */
+    /* parse json  and add extra fields */
     json_obj = json_tokener_parse(str_payload->s);
     if (is_error(json_obj))
     {
@@ -400,7 +457,7 @@ int kz_amqp_send_receive(str *str_exchange, str *str_routing_key, str *str_paylo
     *json_ret = json_body;
     ret = 0;
  error:
-	if(kz_conn != NULL && channel != 0) {
+	if(kz_conn != NULL) {
 		if (rpl_queue.bytes) {
 			amqp_queue_delete(kz_conn->conn, channel, rpl_queue, 0, 0);
 			if (rmq_error("Deleting reply queue", amqp_get_rpc_reply(kz_conn->conn))) {
@@ -409,9 +466,10 @@ int kz_amqp_send_receive(str *str_exchange, str *str_routing_key, str *str_paylo
 			LM_DBG("rpl_queue [%.*s]\n", (int)rpl_queue.len, (char *)rpl_queue.bytes);
 			amqp_bytes_free(rpl_queue);
 		}
-		kz_amqp_channel_close(kz_conn, channel);
+		if(channel != 0) {
+			kz_amqp_channel_close(kz_conn, channel);
+		}
 		kz_amqp_connection_close(kz_conn); // for now
-
 	}
 
     if(json_obj)
