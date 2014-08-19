@@ -33,7 +33,7 @@ static pua_api_t pua_api;
 int rmqp_pres_update_handle(char *req);
 void start_presence_timer_processes(void);
 void start_presence_rmqp_consumer_processes(struct db_id *id);
-void rmqp_consumer_loop(struct db_id *id);
+void rmqp_consumer_loop(struct db_id *id, int childIndex);
 int dbk_initialize_pres_htable(void);
 
 #define BLF_MAX_DIALOGS 8
@@ -203,14 +203,14 @@ void dbk_start_presence_rmqp_consumer_processes(struct db_id *id) {
 	} else if (newpid == 0) {
 	    // child - this will loop forever
 	    LM_DBG("Created dbk AMQP presence worker %d\n", newpid);
-	    rmqp_consumer_loop(id);
+	    rmqp_consumer_loop(id, i);
 	} else {
 	    LM_DBG("Created dbk AMQP presence worker %d\n", newpid);
 	}
     }
 }
 
-void rmqp_consumer_loop(struct db_id *id) {
+void rmqp_consumer_loop(struct db_id *id, int childIndex) {
     amqp_frame_t frame;
     int result;
     amqp_basic_deliver_t *d;
@@ -376,6 +376,10 @@ void rmqp_consumer_loop(struct db_id *id) {
 
     LM_ERR("Presence consumer loop terminated\n");
     rmq_close(rmq);
+    if(childIndex == 0) {
+        dbk_phtable_flush(1, NULL);        
+    }
+    
 }
 
 typedef struct dbk_pres_dialog {
