@@ -22,6 +22,7 @@ int dbk_presence_subscribe_new(const db1_con_t* _h, const db_key_t* db_col,
 int dbk_presence_subscribe_update(const db1_con_t* _h, const db_key_t* _k,
 				const db_val_t* _v, const db_key_t* _uk, const db_val_t* _uv,
 				const int _n, const int _un);
+int rmqp_pres_update_handle(char *req);
 
 #define DBK_PRES_WORKERS_NO 6
 

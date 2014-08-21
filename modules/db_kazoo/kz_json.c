@@ -89,7 +89,7 @@ int kz_json_get_field(struct sip_msg* msg, char* json, char* field, char* dst)
   pv_value_t dst_val;
   char** tokens;
   char* dup;
-  char f1[25], f2[25], f3[25];
+  char f1[25], f2[25];//, f3[25];
   int i;
 
 	if (fixup_get_svalue(msg, (gparam_p)json, &json_s) != 0) {
@@ -125,7 +125,7 @@ int kz_json_get_field(struct sip_msg* msg, char* json, char* field, char* dst)
         	if(jtree != NULL) {
 				str field = str_init(*(tokens + i));
 				// check for idx []
-				int sresult = sscanf(field.s, "%[^[][%[^]]]", f1, f2, f3);
+				int sresult = sscanf(field.s, "%[^[][%[^]]]", f1, f2); //, f3);
 				LM_DBG("CHECK IDX %d - %s , %s, %s\n", sresult, field.s, f1, f2);
 
 				jtree = json_object_object_get(jtree, f1);

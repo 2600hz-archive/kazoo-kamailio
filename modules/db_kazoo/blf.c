@@ -31,7 +31,6 @@ static pua_dialoginfo_api_t pua_dialoginfo_api;
 static pres_dialoginfo_api_t pres_dialoginfo_api;
 static pua_api_t pua_api;
 
-int rmqp_pres_update_handle(char *req);
 void start_presence_timer_processes(void);
 void start_presence_rmqp_consumer_processes(struct db_id *id);
 void rmqp_consumer_loop(struct db_id *id);
@@ -170,8 +169,7 @@ void rmqp_consumer_loop(struct db_id *id) {
 		    continue;
 		}
 
-		amqp_queue_declare(rmq->conn, rmq->channel, blf_queue, 0, 0, 0,
-				   1, amqp_empty_table);
+		amqp_queue_declare(rmq->conn, rmq->channel, blf_queue, 0, 0, 0, 1, amqp_empty_table);
 		if (rmq_error("Declaring queue", amqp_get_rpc_reply(rmq->conn))) {
 		    LM_DBG("Failed to declare AMQP presence queue\n");
 		    continue;
@@ -190,15 +188,13 @@ void rmqp_consumer_loop(struct db_id *id) {
 		}
 
 		static amqp_bytes_t exch = { 10, "dialoginfo" };
-		amqp_queue_bind(rmq->conn, rmq->channel, blf_queue, exch,
-				blf_queue, amqp_empty_table);
+		amqp_queue_bind(rmq->conn, rmq->channel, blf_queue, exch, blf_queue, amqp_empty_table);
 		if (rmq_error("Binding queue", amqp_get_rpc_reply(rmq->conn))) {
 		    LM_DBG("Unable to bind presence AMQP queue\n");
 		    continue;
 		}
 
-		amqp_basic_consume(rmq->conn, rmq->channel, blf_queue,
-				   amqp_empty_bytes, 0, 1, 0, amqp_empty_table);
+		amqp_basic_consume(rmq->conn, rmq->channel, blf_queue, amqp_empty_bytes, 0, 1, 0, amqp_empty_table);
 		if (rmq_error("Consuming", amqp_get_rpc_reply(rmq->conn))) {
 		    LM_DBG("Failed to start consuming from queue\n");
 		    continue;

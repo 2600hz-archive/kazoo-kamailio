@@ -43,6 +43,7 @@
 #include "kz_fixup.h"
 
 static int mod_init(void);
+static int  mod_child_init(int rank);
 static void mod_destroy(void);
 int db_kazoo_bind_api(db_func_t * dbb);
 
@@ -58,6 +59,13 @@ int dbk_dialog_expires = 30;
 int dbk_presence_expires = 3600;
 int dbk_mwi_expires = 3600;
 int dbk_create_empty_dialog = 1;
+
+int dbk_channels = 50;
+int dbk_presence_workers = DBK_PRES_WORKERS_NO;
+
+struct timeval kz_sock_tv = (struct timeval){0,100000};
+struct timeval kz_amqp_tv = (struct timeval){0,100000};
+
 
 struct tm_binds tmb;
 
@@ -85,12 +93,18 @@ static param_export_t params[] = {
     {"mwi_expires", INT_PARAM, &dbk_mwi_expires},
     {"create_empty_dialog", INT_PARAM, &dbk_create_empty_dialog},
     {"amqp_connection", STR_PARAM|USE_FUNC_PARAM,(void*)kz_amqp_add_connection},
+    {"amqp_max_channels", INT_PARAM, &dbk_channels},
+    {"amqp_presence_consumers", INT_PARAM, &dbk_presence_workers},
+    {"amqp_interprocess_timeout_micro", INT_PARAM, &kz_sock_tv.tv_usec},
+    {"amqp_interprocess_timeout_sec", INT_PARAM, &kz_sock_tv.tv_sec},
+    {"amqp_waitframe_timout_micro", INT_PARAM, &kz_amqp_tv.tv_usec},
+    {"amqp_waitframe_timout_sec", INT_PARAM, &kz_amqp_tv.tv_sec},
     {0, 0, 0}
 };
 
 static mi_export_t mi_cmds[] = {
-    {"presence_list", mi_dbk_phtable_dump, 0, 0, 0},
-    {"presence_flush", mi_dbk_phtable_flush, 0, 0, 0},
+//    {"presence_list", mi_dbk_phtable_dump, 0, 0, 0},
+//    {"presence_flush", mi_dbk_phtable_flush, 0, 0, 0},
     {"presentity_list", mi_dbk_presentity_dump, 0, 0, 0},
     {"presentity_flush", mi_dbk_presentity_flush, 0, 0, 0},
     {0, 0, 0, 0, 0}
@@ -108,16 +122,20 @@ struct module_exports exports = {
     mod_init,			/* module initialization function */
     0,				/* response function */
     mod_destroy,		/* destroy function */
-    0				/* per-child init function */
+    mod_child_init				/* per-child init function */
 };
 
+
+int *kz_pipe_fds = NULL;
+
 static int mod_init(void) {
+	int i;
+
     if (register_mi_mod(exports.name, mi_cmds) != 0) {
 	LM_ERR("failed to register MI commands\n");
 	return -1;
     }
 
-    register_procs(DBK_PRES_WORKERS_NO);
 
     if (dbk_node_hostname.s == NULL) {
 	LM_ERR("You must set the node_hostname parameter\n");
@@ -134,11 +152,51 @@ static int mod_init(void) {
 	return -1;
     }
 
+    int total_workers = dbk_presence_workers + 1;
+    kz_pipe_fds = (int*) shm_malloc(sizeof(int) * total_workers * 2 );
+
+    for(i=0; i < total_workers; i++) {
+    	kz_pipe_fds[i*2] = kz_pipe_fds[i*2+1] = -1;
+		if (pipe(&kz_pipe_fds[i*2]) < 0) {
+			LM_ERR("pipe(%d) failed\n", i);
+			return -1;
+		}
+    }
+
+    register_procs(total_workers);
+
+    dbk_initialize_presence();
     dbk_presentity_initialize();
 
-//    kz_amqp_get_connection();
-
     return 0;
+}
+
+
+static int mod_child_init(int rank)
+{
+	int pid;
+	int i;
+
+	if (rank==PROC_MAIN) {
+		pid=fork_process(PROC_NOCHLDINIT, "AMQP Manager", 1);
+		if (pid<0)
+			return -1; /* error */
+		if(pid==0){
+			kz_amqp_manager_loop(0);
+		}
+		else {
+			for(i=0; i < dbk_presence_workers; i++) {
+				pid=fork_process(PROC_NOCHLDINIT, "AMQP Presence Consumer", 1);
+				if (pid<0)
+					return -1; /* error */
+				if(pid==0){
+					kz_amqp_presence_consumer_loop(i+1);
+				}
+			}
+		}
+	}
+
+	return 0;
 }
 
 db1_con_t *db_kazoo_init(const str * _url) {
