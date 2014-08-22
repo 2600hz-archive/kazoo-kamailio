@@ -36,12 +36,11 @@ int fixup_kz_json(void** param, int param_no)
 int fixup_kz_json_free(void** param, int param_no)
 {
 	if (param_no == 1 || param_no == 2) {
-		LM_WARN("free function has not been defined for spve\n");
-		return 0;
+		return fixup_free_spve_null(param, 1);
 	}
 
 	if (param_no == 3) {
-		return fixup_free_pvar_null(param, 3);
+		return fixup_free_pvar_null(param, 1);
 	}
 
 	LM_ERR("invalid parameter number <%d>\n", param_no);
@@ -74,47 +73,18 @@ int fixup_kz_amqp_encode(void** param, int param_no)
 int fixup_kz_amqp_encode_free(void** param, int param_no)
 {
 	if (param_no == 1 ) {
-		LM_WARN("free function has not been defined for spve\n");
-		return 0;
+		return fixup_free_spve_null(param, 1);
 	}
 
 	if (param_no == 2) {
-		return fixup_free_pvar_null(param, 2);
+		return fixup_free_pvar_null(param, 1);
 	}
 
 	LM_ERR("invalid parameter number <%d>\n", param_no);
 	return -1;
 }
 
-typedef struct _xl_msg
-{
-	pv_elem_t *m;
-	struct action *a;
-} xl_msg_t;
 
-
-int kz_ampq_fixup_helper(void** param, int param_no)
-{
-	xl_msg_t *xm;
-	str s;
-
-	xm = (xl_msg_t*)pkg_malloc(sizeof(xl_msg_t));
-	if(xm==NULL)
-	{
-		LM_ERR("no more pkg\n");
-		return -1;
-	}
-	memset(xm, 0, sizeof(xl_msg_t));
-	s.s = (char*)(*param); s.len = strlen(s.s);
-
-	if(pv_parse_format(&s, &xm->m)<0)
-	{
-		LM_ERR("wrong format[%s]\n", (char*)(*param));
-		return E_UNSPEC;
-	}
-	*param = (void*)xm;
-	return 0;
-}
 
 int fixup_kz_amqp(void** param, int param_no)
 {
@@ -141,11 +111,11 @@ int fixup_kz_amqp(void** param, int param_no)
 int fixup_kz_amqp_free(void** param, int param_no)
 {
 	if (param_no == 1 || param_no == 2 || param_no == 3) {
-		return 0;
+		return fixup_free_spve_null(param, 1);
 	}
 
 	if (param_no == 4) {
-		return fixup_free_pvar_null(param, 4);
+		return fixup_free_pvar_null(param, 1);
 	}
 
 	LM_ERR("invalid parameter number <%d>\n", param_no);
