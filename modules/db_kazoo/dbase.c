@@ -131,7 +131,7 @@ void *db_kazoo_new_connection(struct db_id *id) {
 	}
 	if (process_no == 1) {
 	    LM_DBG("Start presence rmqp consumer processes\n");
-	    dbk_start_presence_rmqp_consumer_processes(id);
+	    //dbk_start_presence_rmqp_consumer_processes(id);
 	}
     }
 

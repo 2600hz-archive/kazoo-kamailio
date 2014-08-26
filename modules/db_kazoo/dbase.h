@@ -12,6 +12,9 @@ extern str dbk_reg_fs_path;
 extern int dbk_auth_wait_timeout;
 extern int dbk_reconn_retries;
 extern struct tm_binds tmb;
+extern str dbk_consumer_event_key;
+extern str dbk_consumer_event_subkey;
+extern int dbk_consumer_processes;
 
 typedef struct rmq_conn {
 	struct db_id* id;        /**< Connection identifier */

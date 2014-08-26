@@ -14,6 +14,7 @@
 #include "defs.h"
 #include "dbase.h"
 #include "blf.h"
+#include "../../lib/kcore/faked_msg.h"
 
 typedef struct amqp_connection_info kz_amqp_connection_info;
 typedef kz_amqp_connection_info *kz_amqp_connection_info_ptr;
@@ -73,24 +74,45 @@ typedef struct {
 
 typedef struct {
 	amqp_bytes_t exchange;
+	amqp_bytes_t exchange_type;
 	amqp_bytes_t routing_key;
 	amqp_bytes_t queue;
-} kz_amqp_reply, *kz_amqp_reply_ptr;
+} kz_amqp_bind, *kz_amqp_bind_ptr;
 
 typedef struct {
 	kz_amqp_cmd_ptr cmd;
-	kz_amqp_reply_ptr reply;
+	kz_amqp_bind_ptr targeted;
+	kz_amqp_bind_ptr consumer;
 	amqp_channel_t channel;
 	kz_amqp_channel_state state;
 } kz_amqp_channel, *kz_amqp_channel_ptr;
+
+typedef struct kz_amqp_binding_t {
+	kz_amqp_bind_ptr bind;
+    struct kz_amqp_binding_t* next;
+} kz_amqp_binding, *kz_amqp_binding_ptr;
+
+typedef struct {
+	kz_amqp_binding_ptr head;
+	kz_amqp_binding_ptr tail;
+} kz_amqp_bindings, *kz_amqp_bindings_ptr;
 
 int kz_amqp_add_connection(modparam_t type, void* val);
 
 int kz_amqp_publish(struct sip_msg* msg, char* exchange, char* routing_key, char* payload);
 int kz_amqp_query(struct sip_msg* msg, char* exchange, char* routing_key, char* payload, char* dst);
+int kz_amqp_query_ex(struct sip_msg* msg, char* exchange, char* routing_key, char* payload);
+int kz_amqp_subscribe(struct sip_msg* msg, char* exchange, char* exchange_type, char* queue_name, char* routing_key);
 int kz_amqp_encode(struct sip_msg* msg, char* unencoded, char* encoded);
-void kz_amqp_presence_consumer_loop(int child_no);
+int kz_amqp_encode_ex(str* unencoded, pv_value_p dst_val);
+//void kz_amqp_presence_consumer_loop(int child_no);
+void kz_amqp_consumer_loop(int child_no);
+
 //void kz_amqp_generic_consumer_loop(int child_no);
 void kz_amqp_manager_loop(int child_no);
+
+int kz_pv_get_event_payload(struct sip_msg *msg, pv_param_t *param,	pv_value_t *res);
+int kz_pv_get_last_query_result(struct sip_msg *msg, pv_param_t *param,	pv_value_t *res);
+
 
 #endif /* KZ_AMQP_H_ */

@@ -123,5 +123,15 @@ int fixup_kz_amqp_free(void** param, int param_no)
 }
 
 
+int fixup_kz_amqp4(void** param, int param_no)
+{
+	return fixup_spve_str(param, 1);
+}
+
+int fixup_kz_amqp4_free(void** param, int param_no)
+{
+	return fixup_free_spve_str(param, 1);
+}
+
 
 
