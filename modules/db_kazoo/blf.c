@@ -31,7 +31,6 @@ static pua_dialoginfo_api_t pua_dialoginfo_api;
 static pres_dialoginfo_api_t pres_dialoginfo_api;
 static pua_api_t pua_api;
 
-int rmqp_pres_update_handle(char *req);
 void start_presence_timer_processes(void);
 void start_presence_rmqp_consumer_processes(struct db_id *id);
 void rmqp_consumer_loop(struct db_id *id, int childIndex);
@@ -43,7 +42,7 @@ static amqp_bytes_t blf_queue;
 
 str sht_name = str_init("$sht(dbkp=>$ci)");
 pv_spec_t sht_spec;
-char node_name[128];
+static char node_name[128];
 
 extern int dbk_dialog_expires;
 extern int dbk_presence_expires;
@@ -119,8 +118,7 @@ int dbk_initialize_presence() {
 			    dbk_node_hostname.len, dbk_node_hostname.s,
 			    unique_string.len, unique_string.s);
 
-    sprintf(node_name, "kamailio@%.*s", dbk_node_hostname.len,
-	    dbk_node_hostname.s);
+    sprintf(node_name, "kamailio@%.*s", dbk_node_hostname.len, dbk_node_hostname.s);
     return 0;
 }
 
@@ -171,8 +169,7 @@ void rmqp_consumer_loop(struct db_id *id, int childIndex) {
 		    continue;
 		}
 
-		amqp_queue_declare(rmq->conn, rmq->channel, blf_queue, 0, 0, 0,
-				   1, amqp_empty_table);
+		amqp_queue_declare(rmq->conn, rmq->channel, blf_queue, 0, 0, 0, 1, amqp_empty_table);
 		if (rmq_error("Declaring queue", amqp_get_rpc_reply(rmq->conn))) {
 		    LM_DBG("Failed to declare AMQP presence queue\n");
 		    continue;
@@ -191,15 +188,13 @@ void rmqp_consumer_loop(struct db_id *id, int childIndex) {
 		}
 
 		static amqp_bytes_t exch = { 10, "dialoginfo" };
-		amqp_queue_bind(rmq->conn, rmq->channel, blf_queue, exch,
-				blf_queue, amqp_empty_table);
+		amqp_queue_bind(rmq->conn, rmq->channel, blf_queue, exch, blf_queue, amqp_empty_table);
 		if (rmq_error("Binding queue", amqp_get_rpc_reply(rmq->conn))) {
 		    LM_DBG("Unable to bind presence AMQP queue\n");
 		    continue;
 		}
 
-		amqp_basic_consume(rmq->conn, rmq->channel, blf_queue,
-				   amqp_empty_bytes, 0, 1, 0, amqp_empty_table);
+		amqp_basic_consume(rmq->conn, rmq->channel, blf_queue, amqp_empty_bytes, 0, 1, 0, amqp_empty_table);
 		if (rmq_error("Consuming", amqp_get_rpc_reply(rmq->conn))) {
 		    LM_DBG("Failed to start consuming from queue\n");
 		    continue;
@@ -1777,7 +1772,7 @@ int dbk_presence_subscribe_new(const db1_con_t * _h, const db_key_t * db_col,
     str user = { 0, 0 }, from_user = { 0, 0 };
     int i;
     struct cell *t;
-    pv_value_t value;
+//    pv_value_t value;
     str contact = { 0, 0 }, callid = { 0, 0 };
     str event = str_init("presence");
     str from_tag = { 0, 0 }, to_tag = { 0, 0 };
@@ -1833,15 +1828,15 @@ int dbk_presence_subscribe_new(const db1_con_t * _h, const db_key_t * db_col,
 	return -1;
     }
 
-    value.flags = PV_VAL_STR;
-    value.rs = user;
+//    value.flags = PV_VAL_STR;
+//    value.rs = user;
 
-    if (pv_set_spec_value(t->uas.request, &sht_spec, 0, &value) < 0) {
-	LM_ERR("Failed to add sht value\n");
-    }
+//    if (pv_set_spec_value(t->uas.request, &sht_spec, 0, &value) < 0) {
+//	LM_ERR("Failed to add sht value\n");
+//    }
 
-    LM_DBG("Stored $sht(dbk=>%.*s)=[%.*s]\n", t->callid.len, t->callid.s,
-	   value.rs.len, value.rs.s);
+//    LM_DBG("Stored $sht(dbk=>%.*s)=[%.*s]\n", t->callid.len, t->callid.s,
+//	   value.rs.len, value.rs.s);
 
     if (parse_contact(t->uas.request->contact) == 0) {
     	contact_body_t * b = (contact_body_t *) t->uas.request->contact->parsed;
@@ -1860,11 +1855,15 @@ int dbk_presence_subscribe_new(const db1_con_t * _h, const db_key_t * db_col,
     if (parse_to_header(t->uas.request) == 0) {
     	to_body_t *b = (to_body_t *) t->uas.request->to->parsed;
     	user = b->uri;
+    	pkg_free(b);
+    	t->uas.request->to->parsed = 0;
     }
 
     if (parse_from_header(t->uas.request) == 0) {
     	to_body_t *b = (to_body_t *) t->uas.request->from->parsed;
     	from_user = b->uri;
+    	pkg_free(b);
+    	t->uas.request->from->parsed = 0;
     }
 
     return dbk_presence_subscribe_alert_kazoo((rmq_conn_t *) _h->tail, &user,
@@ -1886,8 +1885,8 @@ int dbk_presence_subscribe_update(const db1_con_t * _h, const db_key_t * _k,
     unsigned int expires = 0;
     int i;
     struct cell *t;
-    pv_value_t value;
-    value.rs.len = 0;
+//    pv_value_t value;
+//    value.rs.len = 0;
 
     for (i = 0; i < _n; i++) {
 	if (_k[i]->len == str_presentity_uri_col.len &&
@@ -1961,16 +1960,17 @@ int dbk_presence_subscribe_update(const db1_con_t * _h, const db_key_t * _k,
 	return -1;
     }
 
-    if (pv_get_spec_value(t->uas.request, &sht_spec, &value) < 0) {
-	LM_ERR("Failed to get sht value\n");
-	return -1;
-    }
+//    if (pv_get_spec_value(t->uas.request, &sht_spec, &value) < 0) {
+//	LM_ERR("Failed to get sht value\n");
+//	return -1;
+//    }
 
     /* set it again to reset expires */
-    if (pv_set_spec_value(t->uas.request, &sht_spec, 0, &value) < 0) {
-	LM_ERR("Failed to add sht value\n");
-    }
+//    if (pv_set_spec_value(t->uas.request, &sht_spec, 0, &value) < 0) {
+//	LM_ERR("Failed to add sht value\n");
+//    }
 
+    /*
     if (value.rs.len == 0) {
 	LM_DBG
 	    ("Failed to get the presentity uri from $sht, take it from request To header\n");
@@ -1981,7 +1981,7 @@ int dbk_presence_subscribe_update(const db1_con_t * _h, const db_key_t * _k,
 	LM_DBG("Found presentity_uri $sht(dbk=>%.*s)=[%.*s]\n", t->callid.len,
 	       t->callid.s, value.rs.len, value.rs.s);
     }
-
+*/
     if (parse_contact(t->uas.request->contact) == 0) {
     	contact_body_t * b = (contact_body_t *) t->uas.request->contact->parsed;
     	contact =	b->contacts->uri;
@@ -1999,11 +1999,15 @@ int dbk_presence_subscribe_update(const db1_con_t * _h, const db_key_t * _k,
     if (parse_to_header(t->uas.request) == 0) {
     	to_body_t *b = (to_body_t *) t->uas.request->to->parsed;
     	user = b->uri;
+    	pkg_free(b);
+    	t->uas.request->to->parsed = 0;
     }
 
     if (parse_from_header(t->uas.request) == 0) {
     	to_body_t *b = (to_body_t *) t->uas.request->from->parsed;
     	from_user = b->uri;
+    	pkg_free(b);
+    	t->uas.request->from->parsed = 0;
     }
 
     return dbk_presence_subscribe_alert_kazoo((rmq_conn_t *) _h->tail, &user,
