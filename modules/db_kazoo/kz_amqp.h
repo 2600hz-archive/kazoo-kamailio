@@ -13,7 +13,7 @@
 #include "const.h"
 #include "defs.h"
 #include "dbase.h"
-#include "blf.h"
+//#include "blf.h"
 #include "../../lib/kcore/faked_msg.h"
 
 typedef struct amqp_connection_info kz_amqp_connection_info;
@@ -70,6 +70,7 @@ typedef struct {
 	char* return_payload;
 	int   return_code;
 	int   consumer;
+	struct timeval timeout;
 } kz_amqp_cmd, *kz_amqp_cmd_ptr;
 
 typedef struct {
@@ -85,6 +86,7 @@ typedef struct {
 	kz_amqp_bind_ptr consumer;
 	amqp_channel_t channel;
 	kz_amqp_channel_state state;
+	struct timeval timer;
 } kz_amqp_channel, *kz_amqp_channel_ptr;
 
 typedef struct kz_amqp_binding_t {

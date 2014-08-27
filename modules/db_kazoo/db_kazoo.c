@@ -36,12 +36,15 @@
 #include "../tm/tm_load.h"
 
 #include "dbase.h"
-#include "blf.h"
+//#include "blf.h"
 #include "presentity.h"
 #include "kz_amqp.h"
 #include "kz_json.h"
 #include "kz_fixup.h"
 #include "kz_trans.h"
+#include "kz_pua.h"
+
+#define DBK_PRES_WORKERS_NO 6
 
 static int mod_init(void);
 static int  mod_child_init(int rank);
@@ -70,11 +73,14 @@ int dbk_consumer_processes = DBK_PRES_WORKERS_NO;
 
 struct timeval kz_sock_tv = (struct timeval){0,100000};
 struct timeval kz_amqp_tv = (struct timeval){0,100000};
+struct timeval kz_qtimeout_tv = (struct timeval){2,0};
 
 str dbk_consumer_event_key = str_init("Event-Category");
 str dbk_consumer_event_subkey = str_init("Event-Name");
 
 int dbk_internal_loop_count = 5;
+int dbk_consumer_loop_count = 10;
+int dbk_include_entity = 0;
 
 struct tm_binds tmb;
 
@@ -99,6 +105,7 @@ static cmd_export_t cmds[] = {
     {"kazoo_publish", (cmd_function) kz_amqp_publish, 3, fixup_kz_amqp, fixup_kz_amqp_free, ANY_ROUTE},
     {"kazoo_query", (cmd_function) kz_amqp_query, 4, fixup_kz_amqp, fixup_kz_amqp_free, ANY_ROUTE},
     {"kazoo_query", (cmd_function) kz_amqp_query_ex, 3, fixup_kz_amqp, fixup_kz_amqp_free, ANY_ROUTE},
+    {"kazoo_pua_publish", (cmd_function) kz_pua_publish, 1, 0, 0, ANY_ROUTE},
 /*
     {"kazoo_subscribe", (cmd_function) kz_amqp_subscribe_1, 1, fixup_kz_amqp4, fixup_kz_amqp4_free, ANY_ROUTE},
     {"kazoo_subscribe", (cmd_function) kz_amqp_subscribe_2, 2, fixup_kz_amqp4, fixup_kz_amqp4_free, ANY_ROUTE},
@@ -132,7 +139,11 @@ static param_export_t params[] = {
     {"amqp_consumer_processes", INT_PARAM, &dbk_consumer_processes},
     {"amqp_consumer_event_key", STR_PARAM, &dbk_consumer_event_key.s},
     {"amqp_consumer_event_subkey", STR_PARAM, &dbk_consumer_event_subkey.s},
+    {"amqp_query_timout_micro", INT_PARAM, &kz_qtimeout_tv.tv_usec},
+    {"amqp_query_timout_sec", INT_PARAM, &kz_qtimeout_tv.tv_sec},
     {"amqp_internal_loop_count", INT_PARAM, &dbk_internal_loop_count},
+    {"amqp_consumer_loop_count", INT_PARAM, &dbk_consumer_loop_count},
+    {"pua_include_entity", INT_PARAM, &dbk_include_entity},
     {0, 0, 0}
 };
 
@@ -166,10 +177,9 @@ static int mod_init(void) {
 	int i;
 
     if (register_mi_mod(exports.name, mi_cmds) != 0) {
-	LM_ERR("failed to register MI commands\n");
+    	LM_ERR("failed to register MI commands\n");
 	return -1;
     }
-
 
     if (dbk_node_hostname.s == NULL) {
 	LM_ERR("You must set the node_hostname parameter\n");
@@ -185,8 +195,13 @@ static int mod_init(void) {
 
     /* load all TM stuff */
     if (load_tm_api(&tmb) == -1) {
-	LM_ERR("Can't load tm functions. Module TM not loaded?\n");
-	return -1;
+    	LM_ERR("Can't load tm functions. Module TM not loaded?\n");
+    	return -1;
+    }
+
+    if(kz_initialize_pua() != 0) {
+    	LM_ERR("Can't load pua functions. Module pua not loaded?\n");
+    	return -1;
     }
 
     int total_workers = dbk_presence_workers + 1;
@@ -202,7 +217,7 @@ static int mod_init(void) {
 
     register_procs(total_workers);
 
-    dbk_initialize_presence();
+//    dbk_initialize_presence();
     dbk_presentity_initialize();
 
     return 0;
@@ -348,8 +363,7 @@ int db_kazoo_bind_api(db_func_t * dbb) {
 }
 
 static void mod_destroy(void) {
-    dbk_destroy_presence();
-    dbk_presentity_destroy();
+	dbk_presentity_destroy();
 }
 
 

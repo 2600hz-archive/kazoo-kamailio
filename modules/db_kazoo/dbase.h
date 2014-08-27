@@ -2,9 +2,11 @@
 #define _DB_KAZOO_DBASE_
 
 #include <amqp.h>
+
 #include "../../lib/srdb1/db.h"
 #include "../../lib/srdb1/db_id.h"
 #include "../../lib/srdb1/db_pool.h"
+
 #include "../tm/tm_load.h"
 
 extern str dbk_node_hostname;
@@ -29,7 +31,7 @@ typedef struct rmq_conn {
         
 }rmq_conn_t;
 
-rmq_conn_t* dbk_dummy_db_conn(struct db_id* id);
+//rmq_conn_t* dbk_dummy_db_conn(struct db_id* id);
 
 /* function that checks for error */
 static inline int rmq_error(char const *context, amqp_rpc_reply_t x)
@@ -102,5 +104,7 @@ int dbk_rmq_wait_for_data(amqp_connection_state_t conn);
 void rmq_close(rmq_conn_t* rmq);
 
 int rmqp_open_connection(rmq_conn_t* rmq);
+
+
 
 #endif

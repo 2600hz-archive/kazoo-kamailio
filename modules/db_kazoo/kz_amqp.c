@@ -30,21 +30,10 @@ extern int *kz_pipe_fds;
 
 extern struct timeval kz_sock_tv;
 extern struct timeval kz_amqp_tv;
+extern struct timeval kz_qtimeout_tv;
 
 extern int dbk_internal_loop_count;
-
-#define json_extract_field(json_name, field)  do {                      \
-    struct json_object* obj = json_object_object_get(json_obj, json_name); \
-    field.s = (char*)json_object_get_string(obj);                       \
-    if (field.s == NULL) {                                              \
-      LM_DBG("Json-c error - failed to extract field [%s]\n", json_name); \
-      field.s = "";                                                     \
-    } else {                                                            \
-      field.len = strlen(field.s);                                      \
-    }                                                                   \
-    LM_DBG("%s: [%s]\n", json_name, field.s?field.s:"Empty");           \
-  } while (0);
-
+extern int dbk_consumer_loop_count;
 
 static char *kz_amqp_str_dup(str *src)
 {
@@ -74,7 +63,7 @@ static char *kz_amqp_string_dup(char *src)
 	return res;
 }
 
-static char *kz_amqp_bytes_dup(amqp_bytes_t bytes)
+char *kz_amqp_bytes_dup(amqp_bytes_t bytes)
 {
 	char *res;
 	int sz;
@@ -96,21 +85,22 @@ void kz_amqp_bytes_free(amqp_bytes_t bytes)
 
 amqp_bytes_t kz_amqp_bytes_malloc_dup(amqp_bytes_t src)
 {
-  amqp_bytes_t result;
+  amqp_bytes_t result = {0, 0};
   result.len = src.len;
-  result.bytes = shm_malloc(src.len);
+  result.bytes = shm_malloc(src.len+1);
   if (result.bytes != NULL) {
     memcpy(result.bytes, src.bytes, src.len);
+    ((char*)result.bytes)[result.len] = '\0';
   }
   return result;
 }
 
-static amqp_bytes_t kz_amqp_bytes_dup_from_string(char *src)
+amqp_bytes_t kz_amqp_bytes_dup_from_string(char *src)
 {
 	return kz_amqp_bytes_malloc_dup(amqp_cstring_bytes(src));
 }
 
-static amqp_bytes_t kz_amqp_bytes_dup_from_str(str *src)
+amqp_bytes_t kz_amqp_bytes_dup_from_str(str *src)
 {
 	return kz_amqp_bytes_malloc_dup(amqp_cstring_bytes(src->s));
 }
@@ -562,6 +552,7 @@ int kz_amqp_pipe_send_receive(str *str_exchange, str *str_routing_key, str *str_
 	cmd->routing_key = kz_amqp_str_dup(str_routing_key);
 	cmd->reply_routing_key = kz_amqp_string_dup(serverid);
 	cmd->payload = kz_amqp_string_dup(payload);
+	cmd->timeout = kz_qtimeout_tv;
 	if(cmd->payload == NULL || cmd->routing_key == NULL || cmd->exchange == NULL) {
 		LM_ERR("failed to allocate kz_amqp_cmd parameters in process %d\n", getpid());
 		goto error;
@@ -1091,9 +1082,12 @@ int kz_amqp_send_ex(kz_amqp_conn_ptr kz_conn, kz_amqp_cmd_ptr cmd, kz_amqp_chann
 	if(json_obj)
     	json_object_put(json_obj);
 
-	amqp_bytes_free(exchange);
-	amqp_bytes_free(routing_key);
-	amqp_bytes_free(payload);
+	if(exchange.bytes)
+		amqp_bytes_free(exchange);
+	if(routing_key.bytes)
+		amqp_bytes_free(routing_key);
+	if(payload.bytes)
+		amqp_bytes_free(payload);
 
 	return ret;
 }
@@ -1307,6 +1301,16 @@ void kz_amqp_consumer_loop(int child_no)
 	LM_INFO("exiting consumer %d\n", child_no);
 }
 
+int check_timeout(struct timeval *now, struct timeval *start, struct timeval *timeout)
+{
+	struct timeval chk;
+	chk.tv_sec = now->tv_sec - start->tv_sec;
+	chk.tv_usec = now->tv_usec - start->tv_usec;
+	if(chk.tv_usec >= timeout->tv_usec)
+		if(chk.tv_sec >= timeout->tv_sec)
+			return 1;
+	return 0;
+}
 
 void kz_amqp_manager_loop(int child_no)
 {
@@ -1318,6 +1322,7 @@ void kz_amqp_manager_loop(int child_no)
     int selret;
 	int INTERNAL_READ, CONSUME, OK;
 	int INTERNAL_READ_COUNT , INTERNAL_READ_MAX_LOOP;
+	int CONSUMER_READ_COUNT , CONSUMER_READ_MAX_LOOP;
 	int consumer;
 	char* payload;
 	int channel_res;
@@ -1325,12 +1330,14 @@ void kz_amqp_manager_loop(int child_no)
 	kz_amqp_cmd_ptr cmd;
     channels = pkg_malloc(dbk_channels * sizeof(kz_amqp_channel));
     int loopcount = 0;
-    INTERNAL_READ_MAX_LOOP = dbk_internal_loop_count;
 	for(i=0; i < dbk_channels; i++) {
 		channels[i].channel = i+1;
 	}
 
     while(1) {
+
+        INTERNAL_READ_MAX_LOOP = dbk_internal_loop_count;
+        CONSUMER_READ_MAX_LOOP = dbk_consumer_loop_count;
 
     	OK = 1;
 
@@ -1406,13 +1413,16 @@ void kz_amqp_manager_loop(int child_no)
 								lock_release(&cmd->lock);
 								break;
 							case KZ_AMQP_CALL:
-								if(kz_amqp_send_receive(kzconn, cmd) < 0) {
+								idx = kz_amqp_send_receive(kzconn, cmd);
+								if(idx < 0) {
 									channels[idx].state = KZ_AMQP_FREE;
 									channels[idx].cmd = NULL;
 									cmd->return_code = -1;
 									lock_release(&cmd->lock);
 									LM_ERR("ERROR SENDING QUERY");
 									OK = INTERNAL_READ = CONSUME = 0;
+								} else {
+									gettimeofday(&channels[idx].timer, NULL);
 								}
 								break;
 							default:
@@ -1424,8 +1434,10 @@ void kz_amqp_manager_loop(int child_no)
 				}
         	}
 
-    	    while(CONSUME) {
+    		CONSUMER_READ_COUNT = 0;
+    	    while(CONSUME && CONSUMER_READ_COUNT < CONSUMER_READ_MAX_LOOP) {
         		payload = NULL;
+        		CONSUMER_READ_COUNT++;
 				amqp_envelope_t envelope;
 				amqp_maybe_release_buffers(kzconn->conn);
 				amqp_rpc_reply_t reply = amqp_consume_message(kzconn->conn, &envelope, &kz_amqp_tv, 0);
@@ -1485,6 +1497,26 @@ void kz_amqp_manager_loop(int child_no)
 				};
 				amqp_destroy_envelope(&envelope);
     	    }
+
+			/* check timeouts */
+			if(OK) {
+				struct timeval now;
+				gettimeofday(&now, NULL);
+				for(i=0; i < dbk_channels; i++) {
+					if(channels[i].state == KZ_AMQP_CALLING
+							&& channels[i].cmd != NULL
+							&& check_timeout(&now, &channels[i].timer, &channels[i].cmd->timeout)) {
+						cmd = channels[i].cmd;
+						channels[i].state = KZ_AMQP_FREE;
+						channels[i].cmd = NULL;
+						cmd->return_code = -1;
+						lock_release(&cmd->lock);
+						// rebind ??
+						LM_ERR("QUERY TIMEOUT");
+					}
+				}
+			}
+
     	}
 
     	kz_amqp_connection_close(kzconn);
