@@ -467,6 +467,7 @@ int dbk_presentity_query(const db1_con_t * _h, const db_key_t * _k,
 		const db_key_t _o, db1_res_t ** _r) {
 
 	str username = { 0, 0 };
+	str user = {0, 0};
 	str domain = { 0, 0 };
 	str event = { 0, 0 }, emptyString = {0, 0}, body = { 0, 0 };
 	int i;
@@ -474,6 +475,7 @@ int dbk_presentity_query(const db1_con_t * _h, const db_key_t * _k,
 	str pres_uri;
 	char pres_uri_buf[1024];
 	char pres_body_buf[1024];
+	char user_buf[120];
 	dbk_presentity_t *pu, *pu_iterator, *pu_empty = NULL;
 	db1_res_t *db_res = NULL;
 	int col;
@@ -538,7 +540,10 @@ int dbk_presentity_query(const db1_con_t * _h, const db_key_t * _k,
 
 	if (pu == NULL ) {
 		if(dbk_create_empty_dialog != 0 && strncmp(event.s, str_event_dialog.s, event.len) == 0) {
-			sprintf(pres_body_buf, DIALOG_EMPTY_BODY, username.s, domain.s);
+			sprintf(user_buf, "%.*s@%*.s",  username.len, username.s,domain.len, domain.s);
+			user.s = user_buf;
+			user.len = strlen(user_buf);
+			sprintf(pres_body_buf, DIALOGINFO_EMPTY_BODY, user.len, user.s);
 			body.s = pres_body_buf;
 			body.len = strlen(pres_body_buf);
 			pu = pu_empty = dbk_presentity_htable_new(&event, &domain, &username, &emptyString, &emptyString, &body, 0, 0);

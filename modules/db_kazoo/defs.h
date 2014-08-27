@@ -10,13 +10,16 @@
 
 #define BLF_MAX_DIALOGS 8
 #define BLF_JSON_FROM      	"From"
+#define BLF_JSON_FROM_USER 	"From-User"
+#define BLF_JSON_FROM_REALM	"From-Realm"
 #define BLF_JSON_TO        	"To"
+#define BLF_JSON_TO_USER 	"To-User"
+#define BLF_JSON_TO_REALM	"To-Realm"
 #define BLF_JSON_CALLID    	"Call-ID"
 #define BLF_JSON_TOTAG     	"To-Tag"
 #define BLF_JSON_FROMTAG   	"From-Tag"
 #define BLF_JSON_STATE     	"State"
 #define BLF_JSON_USER      	"User"
-#define BLF_JSON_FROM     	"From"
 #define BLF_JSON_QUEUE     	"Queue"
 #define BLF_JSON_EXPIRES	"Expires"
 #define BLF_JSON_APP_NAME       "App-Name"
@@ -55,11 +58,51 @@
     </dm:person> \
 </presence>"
 
-#define DIALOG_EMPTY_BODY "<?xml version=\"1.0\" encoding=\"UTF-8\"?> \
-		<dialog-info xmlns=\"urn:ietf:params:xml:ns:dialog-info\" version=\"1\" state=\"full\" entity=\"sip:%s@%s\"> \
+#define DIALOGINFO_EMPTY_BODY "<?xml version=\"1.0\" encoding=\"UTF-8\"?> \
+		<dialog-info xmlns=\"urn:ietf:params:xml:ns:dialog-info\" version=\"1\" state=\"full\" entity=\"%.*s\"> \
 		  <dialog direction=\"initiator\"> \
 		    <state>terminated</state> \
 		  </dialog> \
 		</dialog-info>"
+
+#define DIALOGINFO_BODY "<?xml version=\"1.0\" encoding=\"UTF-8\"?> \
+		<dialog-info xmlns=\"urn:ietf:params:xml:ns:dialog-info\" version=\"1\" state=\"full\" entity=\"%.*s\"> \
+            <dialog id=\"%.*s\" call-id=\"%.*s\" local-tag=\"%.*s\" remote-tag=\"%.*s\" direction=\"%.*s\"> \
+               <state>%.*s</state> \
+                 <local> \
+                    <identity>%.*s</identity> \
+                    <target uri=\"sip:%.*s\"/> \
+                 </local> \
+                 <remote> \
+                    <identity>%.*s</identity> \
+                    <target uri=\"sip:%.*s\"/> \
+                 </remote> \
+            </dialog> \
+		</dialog-info>"
+
+#define DIALOGINFO_BODY_2 "<?xml version=\"1.0\" encoding=\"UTF-8\"?> \
+		<dialog-info xmlns=\"urn:ietf:params:xml:ns:dialog-info\" version=\"1\" state=\"full\" entity=\"%.*s\"> \
+            <dialog id=\"%.*s\" call-id=\"%.*s\" local-tag=\"%.*s\" remote-tag=\"%.*s\" direction=\"%.*s\"> \
+               <state>%.*s</state> \
+                 <local> \
+                    <identity>%.*s</identity> \
+                 </local> \
+                 <remote> \
+                    <identity>%.*s</identity> \
+                 </remote> \
+            </dialog> \
+		</dialog-info>"
+
+#define json_extract_field(json_name, field)  do {                      \
+    struct json_object* obj = json_object_object_get(json_obj, json_name); \
+    field.s = (char*)json_object_get_string(obj);                       \
+    if (field.s == NULL) {                                              \
+      LM_DBG("Json-c error - failed to extract field [%s]\n", json_name); \
+      field.s = "";                                                     \
+    } else {                                                            \
+      field.len = strlen(field.s);                                      \
+    }                                                                   \
+    LM_DBG("%s: [%s]\n", json_name, field.s?field.s:"Empty");           \
+  } while (0);
 
 #endif /* DBK_DEFS_H_ */

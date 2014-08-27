@@ -36,11 +36,21 @@
 #include "../tm/tm_load.h"
 
 #include "dbase.h"
-#include "blf.h"
+//#include "blf.h"
 #include "presentity.h"
+#include "kz_amqp.h"
+#include "kz_json.h"
+#include "kz_fixup.h"
+#include "kz_trans.h"
+#include "kz_pua.h"
+
+#define DBK_PRES_WORKERS_NO 6
 
 static int mod_init(void);
+static int  mod_child_init(int rank);
+static int fire_init_event(int rank);
 static void mod_destroy(void);
+static void  mod_consumer_proc(int rank);
 int db_kazoo_bind_api(db_func_t * dbb);
 
 str dbk_node_hostname = { 0, 0 };
@@ -54,17 +64,59 @@ int dbk_presentity_phtable_size = 4096;
 int dbk_dialog_expires = 30;
 int dbk_presence_expires = 3600;
 int dbk_mwi_expires = 3600;
-int dbk_create_empty_dialog = 0;
+int dbk_create_empty_dialog = 1;
+
+int dbk_channels = 50;
+int dbk_presence_workers = DBK_PRES_WORKERS_NO;
+
+int dbk_consumer_processes = DBK_PRES_WORKERS_NO;
+
+struct timeval kz_sock_tv = (struct timeval){0,100000};
+struct timeval kz_amqp_tv = (struct timeval){0,100000};
+struct timeval kz_qtimeout_tv = (struct timeval){2,0};
+
+str dbk_consumer_event_key = str_init("Event-Category");
+str dbk_consumer_event_subkey = str_init("Event-Name");
+
+int dbk_internal_loop_count = 5;
+int dbk_consumer_loop_count = 10;
+int dbk_include_entity = 0;
 
 struct tm_binds tmb;
 
 MODULE_VERSION
+
+static tr_export_t mod_trans[] = {
+	{ {"kz", sizeof("kz")-1}, kz_tr_parse},
+	{ { 0, 0 }, 0 }
+};
+
+static pv_export_t kz_mod_pvs[] = {
+	{{"kzR", (sizeof("kzR")-1)}, PVT_OTHER, kz_pv_get_last_query_result, 0,	0, 0, 0, 0},
+	{{"kzE", (sizeof("kzE")-1)}, PVT_OTHER, kz_pv_get_event_payload, 0,	0, 0, 0, 0},
+	{ {0, 0}, 0, 0, 0, 0, 0, 0, 0 }
+};
+
 /*
  *  database module interface
  */
 static cmd_export_t cmds[] = {
-    {"db_bind_api", (cmd_function) db_kazoo_bind_api, 0, 0, 0},
-    {0, 0, 0, 0, 0}
+    {"db_bind_api", (cmd_function) db_kazoo_bind_api, 0, 0, 0, 0},
+    {"kazoo_publish", (cmd_function) kz_amqp_publish, 3, fixup_kz_amqp, fixup_kz_amqp_free, ANY_ROUTE},
+    {"kazoo_query", (cmd_function) kz_amqp_query, 4, fixup_kz_amqp, fixup_kz_amqp_free, ANY_ROUTE},
+    {"kazoo_query", (cmd_function) kz_amqp_query_ex, 3, fixup_kz_amqp, fixup_kz_amqp_free, ANY_ROUTE},
+    {"kazoo_pua_publish", (cmd_function) kz_pua_publish, 1, 0, 0, ANY_ROUTE},
+/*
+    {"kazoo_subscribe", (cmd_function) kz_amqp_subscribe_1, 1, fixup_kz_amqp4, fixup_kz_amqp4_free, ANY_ROUTE},
+    {"kazoo_subscribe", (cmd_function) kz_amqp_subscribe_2, 2, fixup_kz_amqp4, fixup_kz_amqp4_free, ANY_ROUTE},
+    {"kazoo_subscribe", (cmd_function) kz_amqp_subscribe_3, 3, fixup_kz_amqp4, fixup_kz_amqp4_free, ANY_ROUTE},
+*/
+    {"kazoo_subscribe", (cmd_function) kz_amqp_subscribe, 4, fixup_kz_amqp4, fixup_kz_amqp4_free, ANY_ROUTE},
+
+
+    {"kazoo_json", (cmd_function) kz_json_get_field, 3, fixup_kz_json, fixup_kz_json_free, ANY_ROUTE},
+    {"kazoo_encode", (cmd_function) kz_amqp_encode, 2, fixup_kz_amqp_encode, fixup_kz_amqp_encode_free, ANY_ROUTE},
+    {0, 0, 0, 0, 0, 0}
 };
 
 static param_export_t params[] = {
@@ -77,12 +129,27 @@ static param_export_t params[] = {
     {"presence_expires", INT_PARAM, &dbk_presence_expires},
     {"mwi_expires", INT_PARAM, &dbk_mwi_expires},
     {"create_empty_dialog", INT_PARAM, &dbk_create_empty_dialog},
+    {"amqp_connection", STR_PARAM|USE_FUNC_PARAM,(void*)kz_amqp_add_connection},
+    {"amqp_max_channels", INT_PARAM, &dbk_channels},
+    {"amqp_presence_consumers", INT_PARAM, &dbk_presence_workers},
+    {"amqp_interprocess_timeout_micro", INT_PARAM, &kz_sock_tv.tv_usec},
+    {"amqp_interprocess_timeout_sec", INT_PARAM, &kz_sock_tv.tv_sec},
+    {"amqp_waitframe_timout_micro", INT_PARAM, &kz_amqp_tv.tv_usec},
+    {"amqp_waitframe_timout_sec", INT_PARAM, &kz_amqp_tv.tv_sec},
+    {"amqp_consumer_processes", INT_PARAM, &dbk_consumer_processes},
+    {"amqp_consumer_event_key", STR_PARAM, &dbk_consumer_event_key.s},
+    {"amqp_consumer_event_subkey", STR_PARAM, &dbk_consumer_event_subkey.s},
+    {"amqp_query_timout_micro", INT_PARAM, &kz_qtimeout_tv.tv_usec},
+    {"amqp_query_timout_sec", INT_PARAM, &kz_qtimeout_tv.tv_sec},
+    {"amqp_internal_loop_count", INT_PARAM, &dbk_internal_loop_count},
+    {"amqp_consumer_loop_count", INT_PARAM, &dbk_consumer_loop_count},
+    {"pua_include_entity", INT_PARAM, &dbk_include_entity},
     {0, 0, 0}
 };
 
 static mi_export_t mi_cmds[] = {
-    {"presence_list", mi_dbk_phtable_dump, 0, 0, 0},
-    {"presence_flush", mi_dbk_phtable_flush, 0, 0, 0},
+//    {"presence_list", mi_dbk_phtable_dump, 0, 0, 0},
+//    {"presence_flush", mi_dbk_phtable_flush, 0, 0, 0},
     {"presentity_list", mi_dbk_presentity_dump, 0, 0, 0},
     {"presentity_flush", mi_dbk_presentity_flush, 0, 0, 0},
     {0, 0, 0, 0, 0}
@@ -95,21 +162,24 @@ struct module_exports exports = {
     params,			/* module parameters */
     0,				/* exported statistics */
     mi_cmds,			/* exported MI functions */
-    0,				/* exported pseudo-variables */
+    kz_mod_pvs,				/* exported pseudo-variables */
     0,				/* extra processes */
     mod_init,			/* module initialization function */
     0,				/* response function */
     mod_destroy,		/* destroy function */
-    0				/* per-child init function */
+    mod_child_init				/* per-child init function */
 };
 
+
+int *kz_pipe_fds = NULL;
+
 static int mod_init(void) {
+	int i;
+
     if (register_mi_mod(exports.name, mi_cmds) != 0) {
-	LM_ERR("failed to register MI commands\n");
+    	LM_ERR("failed to register MI commands\n");
 	return -1;
     }
-
-    register_procs(DBK_PRES_WORKERS_NO);
 
     if (dbk_node_hostname.s == NULL) {
 	LM_ERR("You must set the node_hostname parameter\n");
@@ -120,16 +190,120 @@ static int mod_init(void) {
     if (dbk_reg_fs_path.s)
 	dbk_reg_fs_path.len = strlen(dbk_reg_fs_path.s);
 
+    dbk_consumer_event_key.len = strlen(dbk_consumer_event_key.s);
+   	dbk_consumer_event_subkey.len = strlen(dbk_consumer_event_subkey.s);
+
     /* load all TM stuff */
     if (load_tm_api(&tmb) == -1) {
-	LM_ERR("Can't load tm functions. Module TM not loaded?\n");
-	return -1;
+    	LM_ERR("Can't load tm functions. Module TM not loaded?\n");
+    	return -1;
     }
 
+    if(kz_initialize_pua() != 0) {
+    	LM_ERR("Can't load pua functions. Module pua not loaded?\n");
+    	return -1;
+    }
+
+    int total_workers = dbk_presence_workers + 1;
+    kz_pipe_fds = (int*) shm_malloc(sizeof(int) * total_workers * 2 );
+
+    for(i=0; i < total_workers; i++) {
+    	kz_pipe_fds[i*2] = kz_pipe_fds[i*2+1] = -1;
+		if (pipe(&kz_pipe_fds[i*2]) < 0) {
+			LM_ERR("pipe(%d) failed\n", i);
+			return -1;
+		}
+    }
+
+    register_procs(total_workers);
+
+//    dbk_initialize_presence();
     dbk_presentity_initialize();
 
     return 0;
 }
+
+int mod_register(char *path, int *dlflags, void *p1, void *p2)
+{
+	if(kz_tr_init_buffers()<0)
+	{
+		LM_ERR("failed to initialize transformations buffers\n");
+		return -1;
+	}
+	return register_trans_mod(path, mod_trans);
+}
+
+
+static int mod_child_init(int rank)
+{
+	int pid;
+	int i;
+
+	fire_init_event(rank);
+
+	if (rank==PROC_MAIN) {
+		pid=fork_process(PROC_NOCHLDINIT, "AMQP Manager", 1);
+		if (pid<0)
+			return -1; /* error */
+		if(pid==0){
+			kz_amqp_manager_loop(0);
+		}
+		else {
+			for(i=0; i < dbk_presence_workers; i++) {
+				pid=fork_process(PROC_NOCHLDINIT, "AMQP Consumer", 1);
+				if (pid<0)
+					return -1; /* error */
+				if(pid==0){
+					mod_consumer_proc(i+1);
+				}
+			}
+		}
+	}
+
+	return 0;
+}
+
+static void  mod_consumer_proc(int rank)
+{
+	kz_amqp_consumer_loop(rank);
+}
+
+
+static int fire_init_event(int rank)
+{
+	struct sip_msg *fmsg;
+	struct run_act_ctx ctx;
+	int rtb, rt;
+
+	LM_DBG("rank is (%d)\n", rank);
+	if (rank!=PROC_INIT)
+		return 0;
+
+	rt = route_get(&event_rt, "kazoo:mod-init");
+	if(rt>=0 && event_rt.rlist[rt]!=NULL) {
+		LM_DBG("executing event_route[kazoo:mod-init] (%d)\n", rt);
+		if(faked_msg_init()<0)
+			return -1;
+		fmsg = faked_msg_next();
+		rtb = get_route_type();
+		set_route_type(REQUEST_ROUTE);
+		init_run_actions_ctx(&ctx);
+		run_top_route(event_rt.rlist[rt], fmsg, &ctx);
+		if(ctx.run_flags&DROP_R_F)
+		{
+			LM_ERR("exit due to 'drop' in event route\n");
+			return -1;
+		}
+		set_route_type(rtb);
+	}
+
+	return 0;
+}
+
+
+
+
+
 
 db1_con_t *db_kazoo_init(const str * _url) {
     return db_do_init(_url, (void *(*)())db_kazoo_new_connection);
@@ -189,6 +363,7 @@ int db_kazoo_bind_api(db_func_t * dbb) {
 }
 
 static void mod_destroy(void) {
-    dbk_destroy_presence();
-    dbk_presentity_destroy();
+	dbk_presentity_destroy();
 }
+
+
