@@ -189,7 +189,8 @@ int kz_pua_publish_dialoginfo(struct json_object *json_obj) {
     char extra_buf[1024];
     str sender = {0, 0};
     str dialoginfo_body = {0 , 0};
-
+    int expires = dbk_dialog_expires;
+    
     json_extract_field(BLF_JSON_FROM, from);
     json_extract_field(BLF_JSON_FROM_USER, from_user);
     json_extract_field(BLF_JSON_FROM_REALM, from_realm);
@@ -201,6 +202,11 @@ int kz_pua_publish_dialoginfo(struct json_object *json_obj) {
     json_extract_field(BLF_JSON_TOTAG, totag);
     json_extract_field(BLF_JSON_DIRECTION, direction);
     json_extract_field(BLF_JSON_STATE, state);
+
+    struct json_object* ExpiresObj = json_object_object_get(json_obj, BLF_JSON_EXPIRES);
+    if(ExpiresObj != NULL) {
+    	expires = json_object_get_int(ExpiresObj);
+    }
 
     if (!from_user.len || !to_user.len || !state.len) {
     	LM_ERR("missing one of From / To / State\n");
@@ -253,7 +259,7 @@ int kz_pua_publish_dialoginfo(struct json_object *json_obj) {
 
     publ1.body = &dialoginfo_body;
     publ1.event = DIALOG_EVENT;
-    publ1.expires = dbk_dialog_expires;
+    publ1.expires = expires;
     publ1.flag |= UPDATE_TYPE;
 
     sprintf(sender_buf, "sip:%s",callid.s);
