@@ -700,7 +700,7 @@ int db_kazoo_query(const db1_con_t * _h, const db_key_t * _k,
                    const db_key_t * _c, int _n, int _nc,
                    const db_key_t _o, db1_res_t ** _r) {
     if (!_h ) {
-    	LM_ERR("OUCH!!");
+    	LM_DBG("OUCH!!");
     	_h = shared_db1;
     }
 

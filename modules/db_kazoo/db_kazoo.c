@@ -436,7 +436,7 @@ void db_kazoo_close(db1_con_t * _h) {
 int db_kazoo_use_table(db1_con_t * _h, const str * _t) {
 	LM_DBG("USE TABLE %.*s\n", _t->len, _t->s);
 	if(_h == NULL && !strncmp(_t->s, "presentity", 10)) {
-		LM_ERR("OUCH!!");
+		LM_DBG("OUCH!!");
 		return db_use_table(shared_db1, _t);
 	}
 	else {
