@@ -465,7 +465,7 @@ struct mi_root *mi_dbk_presentity_dump(struct mi_root *cmd_tree, void *param) {
 int copy_column(str* Col, str* StrValue) {
 	Col->s = (char *) pkg_malloc(StrValue->len + 1);
 	if (Col->s == NULL ) {
-		LM_ERR("No more shared memory\n");
+		LM_ERR("No more package memory\n");
 		return 0;
 	}
 	memcpy(Col->s, StrValue->s, StrValue->len);
@@ -667,7 +667,7 @@ int dbk_presentity_query(const db1_con_t * _h, const db_key_t * _k,
 		/* complete the row with the columns */
 		for (col = 0; col < _nc; col++) {
 
-			RES_ROWS(db_res)[0].values[col].type = DB1_STR;
+			RES_ROWS(db_res)[i].values[col].type = DB1_STR;
 
 			if (strncmp(_c[col]->s, "body", _c[col]->len) == 0) {
 				if(!copy_column(&RES_ROWS(db_res)[i].values[col].val.str_val, &pu_iterator->body))
