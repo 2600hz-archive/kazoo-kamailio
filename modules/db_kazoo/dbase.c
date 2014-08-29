@@ -92,7 +92,36 @@ int rmqp_open_connection(rmq_conn_t * rmq) {
     return -1;
 }
 
+extern db1_con_t * shared_db1;
+
+rmq_conn_t *dbk_dummy_shared_db_conn(struct db_id * id) {
+
+    rmq_conn_t *rmq;
+    int db_len = strlen(id->database);
+    int size = sizeof(rmq_conn_t) + db_len;
+
+    rmq = (rmq_conn_t *) shm_malloc(size);
+    if (!rmq) {
+	LM_ERR("No more private memory\n");
+	return NULL;
+    }
+
+    memset(rmq, 0, size);
+    rmq->id = id;
+    rmq->ref = 1;
+
+    LM_DBG("Created new dummy rmq structure %p for %s\n", rmq, id->database);
+
+    rmq->exchange.bytes = (char *)rmq + sizeof(rmq_conn_t);
+    memcpy(rmq->exchange.bytes, id->database, db_len);
+    rmq->exchange.len = db_len;
+
+    LM_DBG("Return dummy db conn\n");
+    return rmq;
+}
+
 rmq_conn_t *dbk_dummy_db_conn(struct db_id * id) {
+
     rmq_conn_t *rmq;
     int db_len = strlen(id->database);
     int size = sizeof(rmq_conn_t) + db_len;
@@ -138,6 +167,28 @@ void *db_kazoo_new_connection(struct db_id *id) {
     */
 
     return dbk_dummy_db_conn(id);
+}
+
+void *db_kazoo_new_shared_connection(struct db_id *id) {
+    LM_DBG("New db connection to exchange %s for %d process %d\n", id->database,
+	   getpid(), process_no);
+    /*
+    if (strncmp(id->database, "dialoginfo", 10) == 0) {
+	if (process_no == 0 && !presence_initialized) {
+	    if (dbk_initialize_presence() < 0) {
+		LM_ERR("Failed to initialize db_kazoo for presence");
+		return NULL;
+	    }
+	    presence_initialized = 1;
+	}
+	if (process_no == 1) {
+	    LM_DBG("Start presence rmqp consumer processes\n");
+	    //dbk_start_presence_rmqp_consumer_processes(id);
+	}
+    }
+    */
+
+    return dbk_dummy_shared_db_conn(id);
 }
 
 /*!
@@ -648,8 +699,13 @@ int db_kazoo_query(const db1_con_t * _h, const db_key_t * _k,
                    const db_op_t * _op, const db_val_t * _v,
                    const db_key_t * _c, int _n, int _nc,
                    const db_key_t _o, db1_res_t ** _r) {
+    if (!_h ) {
+    	LM_ERR("OUCH!!");
+    	_h = shared_db1;
+    }
+
     if (!_h || !CON_TABLE(_h) || !_r) {
-	LM_ERR("invalid parameter value\n");
+	LM_ERR("KAZOO_QUERY - invalid parameter value\n");
 	return -1;
     }
 

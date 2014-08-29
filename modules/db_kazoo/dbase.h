@@ -79,6 +79,7 @@ static inline int rmq_error(char const *context, amqp_rpc_reply_t x)
 
 
 void* db_kazoo_new_connection(struct db_id* id);
+void* db_kazoo_new_shared_connection(struct db_id* id);
 
 int db_kazoo_query(const db1_con_t* _h, const db_key_t* _k, const db_op_t* _op,
 		const db_val_t* _v, const db_key_t* _c, int _n, int _nc,
@@ -105,6 +106,6 @@ void rmq_close(rmq_conn_t* rmq);
 
 int rmqp_open_connection(rmq_conn_t* rmq);
 
-
+db1_con_t *db_kazoo_init(const str * _url);
 
 #endif

@@ -12,6 +12,7 @@
 #include "../../mod_fix.h"
 #include "../../lvalue.h"
 
+
 #include "kz_amqp.h"
 
 #define RET_AMQP_ERROR 2
@@ -1199,33 +1200,31 @@ int kz_pv_get_event_payload(struct sip_msg *msg, pv_param_t *param,	pv_value_t *
 	return eventData == NULL ? pv_get_null(msg, param, res) : pv_get_strzval(msg, param, res, eventData);
 }
 
+
+
 int kz_amqp_consumer_fire_event(char *eventkey)
 {
 	struct sip_msg *fmsg;
 	struct run_act_ctx ctx;
 	int rtb, rt;
 
-	LM_DBG("searching event_route[%s]\n", eventkey);
+	LM_INFO("searching event_route[%s]\n", eventkey);
 	rt = route_get(&event_rt, eventkey);
-	if(rt>=0 && event_rt.rlist[rt]!=NULL) {
-		LM_DBG("executing event_route[%s] (%d)\n", eventkey, rt);
-		if(faked_msg_init()<0)
-			return -2;
-		fmsg = faked_msg_next();
-		rtb = get_route_type();
-		set_route_type(REQUEST_ROUTE);
-		init_run_actions_ctx(&ctx);
-		run_top_route(event_rt.rlist[rt], fmsg, &ctx);
-		if(ctx.run_flags&DROP_R_F)
-		{
-			LM_ERR("exit due to 'drop' in event route\n");
-			return -3;
-		}
-		set_route_type(rtb);
-		return 0;
+	if (rt < 0 || event_rt.rlist[rt] == NULL)
+	{
+		LM_INFO("route %s does not exist\n", eventkey);
+		return -2;
 	}
-	LM_DBG("event_route[%s] not found\n", eventkey);
-	return -1;
+	LM_DBG("executing event_route[%s] (%d)\n", eventkey, rt);
+	if(faked_msg_init()<0)
+		return -2;
+	fmsg = faked_msg_next();
+	rtb = get_route_type();
+	set_route_type(REQUEST_ROUTE);
+	init_run_actions_ctx(&ctx);
+	run_top_route(event_rt.rlist[rt], fmsg, 0);
+	set_route_type(rtb);
+	return 0;
 
 }
 
@@ -1271,6 +1270,10 @@ void kz_amqp_consumer_event(int child_no, char *payload)
 
 void kz_amqp_consumer_loop(int child_no)
 {
+
+//	str dummy_str = str_init("kazoo://localhost");
+//	db1_con_t* _dummy = db_kazoo_init(&dummy_str);
+
 	LM_INFO("starting consumer %d\n", child_no);
 	close(kz_pipe_fds[child_no*2+1]);
 	int data_pipe = kz_pipe_fds[child_no*2];
@@ -1278,11 +1281,12 @@ void kz_amqp_consumer_loop(int child_no)
 	fd_set fdset;
     int selret;
 
-	while(1) {
+    while(1) {
     	FD_ZERO(&fdset);
     	FD_SET(data_pipe, &fdset);
 
-    	selret = select(FD_SETSIZE, &fdset, NULL, NULL, &kz_sock_tv);
+//    	selret = select(FD_SETSIZE, &fdset, NULL, NULL, &kz_sock_tv);
+    	selret = select(FD_SETSIZE, &fdset, NULL, NULL, NULL);
 
     	if (selret < 0) {
     		LM_ERR("select() failed: %s\n", strerror(errno));
@@ -1310,6 +1314,52 @@ int check_timeout(struct timeval *now, struct timeval *start, struct timeval *ti
 		if(chk.tv_sec >= timeout->tv_sec)
 			return 1;
 	return 0;
+}
+
+char *connection_host = NULL;
+
+int kz_pv_get_connection_host(struct sip_msg *msg, pv_param_t *param,	pv_value_t *res)
+{
+	return connection_host == NULL ? pv_get_null(msg, param, res) : pv_get_strzval(msg, param, res, connection_host);
+}
+
+int kz_amqp_fire_script_event(char* p_eventname, char* host)
+{
+	struct sip_msg *fmsg;
+	struct run_act_ctx ctx;
+	int rtb, rt;
+	int ret = 0;
+
+	char eventname[100];
+	sprintf(eventname,"kazoo:%s", p_eventname);
+
+	connection_host = host;
+
+	rt = route_get(&event_rt, eventname);
+	if(rt>=0 && event_rt.rlist[rt]!=NULL) {
+		LM_DBG("executing event_route[%s] (%d)\n", eventname, rt);
+		if(faked_msg_init()<0) {
+			LM_ERR("error creating fake_msg\n");
+			ret = -1;
+			goto error;
+		}
+		fmsg = faked_msg_next();
+		rtb = get_route_type();
+		set_route_type(REQUEST_ROUTE);
+		init_run_actions_ctx(&ctx);
+		run_top_route(event_rt.rlist[rt], fmsg, &ctx);
+		if(ctx.run_flags&DROP_R_F)
+		{
+			LM_ERR("exit due to 'drop' in event route\n");
+			ret = -1;
+			goto error;
+		}
+		set_route_type(rtb);
+	}
+
+error:
+	connection_host = NULL;
+	return ret;
 }
 
 void kz_amqp_manager_loop(int child_no)
@@ -1345,8 +1395,11 @@ void kz_amqp_manager_loop(int child_no)
     		kzconn = kz_amqp_get_next_connection();
     		if(kzconn != NULL)
     			break;
-    		LM_INFO("Connection failed");
+    		LM_INFO("Connection failed : all servers down?");
+    		sleep(3);
     	}
+
+    	kz_amqp_fire_script_event("connection-open", kzconn->info.host);
 
     	loopcount++;
     	for(i=0,channel_res=0; i < dbk_channels && channel_res == 0; i++) {
@@ -1518,7 +1571,7 @@ void kz_amqp_manager_loop(int child_no)
 			}
 
     	}
-
     	kz_amqp_connection_close(kzconn);
+    	kz_amqp_fire_script_event("connection-closed", kzconn->info.host);
     }
 }

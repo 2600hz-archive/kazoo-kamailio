@@ -121,7 +121,7 @@ dbk_presentity_t *dbk_presentity_search(unsigned int hash_code, str *event,
 dbk_presentity_t *dbk_presentity_htable_new(str *event, str *domain, str *username,
 		str * etag, str * sender, str * body, int received_time, int expires) {
 	int size = event->len + domain->len + username->len + etag->len + sender->len
-			+ body->len;
+			+ body->len + 6;
 	dbk_presentity_t *pu = (dbk_presentity_t *) shm_malloc(
 			sizeof(dbk_presentity_t) + size);
 
@@ -136,27 +136,37 @@ dbk_presentity_t *dbk_presentity_htable_new(str *event, str *domain, str *userna
 	memcpy(pu->event.s, event->s, event->len);
 	pu->event.len = event->len;
 	p += event->len;
+	*p='\0';
+	p++;
 
 	pu->domain.s = p;
 	memcpy(pu->domain.s, domain->s, domain->len);
 	pu->domain.len = domain->len;
 	p += domain->len;
+	*p='\0';
+	p++;
 
 	pu->username.s = p;
 	memcpy(pu->username.s, username->s, username->len);
 	pu->username.len = username->len;
 	p += username->len;
+	*p='\0';
+	p++;
 
 	pu->etag.s = p;
 	memcpy(pu->etag.s, etag->s, etag->len);
 	pu->etag.len = etag->len;
 	p += etag->len;
+	*p='\0';
+	p++;
 
 	if (sender->len) {
 		pu->sender.s = p;
 		memcpy(pu->sender.s, sender->s, sender->len);
 		pu->sender.len = sender->len;
 		p += sender->len;
+		*p='\0';
+		p++;
 	}
 
 	if (body->len) {
@@ -164,6 +174,8 @@ dbk_presentity_t *dbk_presentity_htable_new(str *event, str *domain, str *userna
 		memcpy(pu->body.s, body->s, body->len);
 		pu->body.len = body->len;
 		p += body->len;
+		*p='\0';
+		p++;
 	}
 
 	pu->received_time = received_time;
@@ -202,17 +214,17 @@ int dbk_presentity_htable_delete(str *event, str *domain, str *username, str * e
 	dbk_presentity_t *pu, *pu_prev = NULL;
 
 	lock_get(&dbk_presentity_phtable[hash_code].lock);
-//	dbk_presentity_t *pu = dbk_presentity_phtable[hash_code].pu;
 
 	for (pu = dbk_presentity_phtable[hash_code].pu; pu; pu = pu->next) {
 		if (pu->domain.len == domain->len
-				&& memcmp(pu->domain.s, domain->s, domain->len) == 0
+				&& strncmp(pu->domain.s, domain->s, domain->len) == 0
 				&& pu->username.len == username->len
-				&& memcmp(pu->username.s, username->s, username->len) == 0
+				&& strncmp(pu->username.s, username->s, username->len) == 0
 				&& pu->event.len == event->len
-				&& memcmp(pu->event.s, event->s, event->len) == 0
+				&& strncmp(pu->event.s, event->s, event->len) == 0
 				&& pu->sender.len == sender->len
-				&& memcmp(pu->sender.s, sender->s, sender->len) == 0) {
+				&& strncmp(pu->sender.s, sender->s, sender->len) == 0
+				) {
 			break;
 		}
 		pu_prev = pu;
@@ -223,8 +235,6 @@ int dbk_presentity_htable_delete(str *event, str *domain, str *username, str * e
 		} else {
 			dbk_presentity_phtable[hash_code].pu = pu->next;
 		}
-		if(pu == dbk_presentity_phtable[hash_code].pu)
-			dbk_presentity_phtable[hash_code].pu = pu_prev;
 		if(pu == dbk_presentity_phtable[hash_code].tail)
 			dbk_presentity_phtable[hash_code].tail = pu_prev;
 
@@ -243,13 +253,12 @@ int dbk_presentity_flush(int flush_all, str *event, str * domain, str * user) {
 		for (i = 0; i < dbk_presentity_phtable_size; i++) {
 			lock_get(&dbk_presentity_phtable[i].lock);
 			pu = dbk_presentity_phtable[i].pu;
-			dbk_presentity_phtable[i].pu = NULL;
-			lock_release(&dbk_presentity_phtable[i].lock);
-
 			for (; pu; pu = pu_next) {
 				pu_next = pu->next;
 				dbk_free_presentity(pu);
 			}
+			dbk_presentity_phtable[i].pu = dbk_presentity_phtable[i].tail = NULL;
+			lock_release(&dbk_presentity_phtable[i].lock);
 		}
 	} else {
 		int hash_code;
@@ -275,6 +284,17 @@ int dbk_presentity_flush(int flush_all, str *event, str * domain, str * user) {
 
 	}
 	return 0;
+}
+
+
+
+int w_mi_dbk_presentity_flush(struct sip_msg* msg)
+{
+	if (dbk_presentity_flush(1, NULL, NULL, NULL) < 0) {
+		LM_ERR("Presence htable flushing failed\n");
+		return -1;
+	}
+	return 1;
 }
 
 struct mi_root *mi_dbk_presentity_flush(struct mi_root *cmd, void *param) {
@@ -433,22 +453,14 @@ struct mi_root *mi_dbk_presentity_dump(struct mi_root *cmd_tree, void *param) {
 
 	return rpl_tree;
 
-	error: lock_release(&dbk_presentity_phtable[i].lock);
+	error:
+	lock_release(&dbk_presentity_phtable[i].lock);
+	if(rpl_tree)
+		free_mi_tree(rpl_tree);
 	LM_ERR("Failed to print presentity htable\n");
 	return 0;
 }
 #define DBK_DBOP(i) (_op && _op[i] ? _op[i] : "=")
-
-int dbk_presentity_query_expired(db1_res_t ** _r) {
-    db1_res_t *db_res = db_new_result();
-    if (db_res == NULL) {
-	LM_ERR("no memory left\n");
-	return -1;
-    }
-    RES_ROW_N(db_res) = 0;
-    *_r = db_res;
-    return 0;
-}
 
 int copy_column(str* Col, str* StrValue) {
 	Col->s = (char *) pkg_malloc(StrValue->len + 1);
@@ -461,6 +473,49 @@ int copy_column(str* Col, str* StrValue) {
 	Col->s[Col->len] = '\0';
 	return 1;
 }
+
+int dbk_presentity_query_expired(db1_res_t ** _r, int expires) {
+    db1_res_t *db_res = db_new_result();
+	dbk_presentity_t *pu_prev = NULL;
+	dbk_presentity_t *pu;
+	int i;
+
+	if (db_res == NULL) {
+    	LM_ERR("no memory left\n");
+    	return -1;
+    }
+
+
+	for (i = 0; i < dbk_presentity_phtable_size; i++) {
+		lock_get(&dbk_presentity_phtable[i].lock);
+		while( (pu = dbk_presentity_search_expired(i, expires, &pu_prev)) != NULL) {
+			if (pu_prev) {
+				pu_prev->next = pu->next;
+			} else {
+				dbk_presentity_phtable[i].pu = pu->next;
+			}
+			if(pu == dbk_presentity_phtable[i].tail)
+				dbk_presentity_phtable[i].tail = pu_prev;
+			LM_INFO("deleting expired presentity %.*s , %.*s, %.*s, %.*s, %d , %d\n",
+					pu->event.len, pu->event.s,
+					pu->domain.len, pu->domain.s,
+					pu->username.len, pu->username.s,
+					pu->sender.len, pu->sender.s,
+					pu->received_time, pu->expires
+					);
+			dbk_free_presentity(pu);
+		}
+		lock_release(&dbk_presentity_phtable[i].lock);
+	}
+
+
+    RES_ROW_N(db_res) = 0;
+    *_r = db_res;
+    return 0;
+}
+
+
+
 
 int dbk_presentity_query(const db1_con_t * _h, const db_key_t * _k,
 		const db_op_t * _op, const db_val_t * _v, const db_key_t * _c, int _n, int _nc,
@@ -480,6 +535,7 @@ int dbk_presentity_query(const db1_con_t * _h, const db_key_t * _k,
 	db1_res_t *db_res = NULL;
 	int col;
 	int row_cnt = 0;
+	int expires = 0;
 
 	for (i = 0; i < _n; i++) {
 		if (_k[i]->len == str_username_col.len
@@ -491,30 +547,36 @@ int dbk_presentity_query(const db1_con_t * _h, const db_key_t * _k,
 		} else if (_k[i]->len == str_event_col.len
 				&& strncmp(_k[i]->s, str_event_col.s, str_event_col.len) == 0) {
 			event = _v[i].val.str_val;
-		}
+		} else if (_k[i]->len == str_expires_col.len
+				&& strncmp(_k[i]->s, str_expires_col.s, str_expires_col.len) == 0
+				&& _op && !strncmp(_op[i], "<", 1)
+				) {
+	        expires = _v[i].val.int_val;
+	    }
+
 
 		if (_v[i].type == DB1_STR) {
-		    LM_DBG("presence query field %s %s %.*s ", _k[i]->s, (_op && _op[i] ? _op[i] : "="),
+		    LM_INFO("presence query field %s %s %.*s ", _k[i]->s, (_op && _op[i] ? _op[i] : "="),
 			   _v[i].val.str_val.len, _v[i].val.str_val.s);
 		} else if (_v[i].type == DB1_BLOB) {
-		    LM_DBG("presence query field %s %s %.*s ", _k[i]->s, (_op && _op[i] ? _op[i] : "="),
+		    LM_INFO("presence query field %s %s %.*s ", _k[i]->s, (_op && _op[i] ? _op[i] : "="),
 			   _v[i].val.str_val.len, _v[i].val.str_val.s);
 		} else if (_v[i].type == DB1_INT) {
-		    LM_DBG("presence query field %s %s %i ", _k[i]->s, (_op && _op[i] ? _op[i] : "="),
+		    LM_INFO("presence query field %s %s %i ", _k[i]->s, (_op && _op[i] ? _op[i] : "="),
 			   _v[i].val.int_val);
 		} else {
-		    LM_DBG("presence query other field %s %s %i ", _k[i]->s, (_op && _op[i] ? _op[i] : "="), _v[i].type);
+		    LM_INFO("presence query other field %s %s %i ", _k[i]->s, (_op && _op[i] ? _op[i] : "="), _v[i].type);
 		}
 	}
 
 	for (i = 0; i < _nc; i++) {
-	    LM_DBG("presence query return field %s", _c[i]->s);
+	    LM_INFO("presence query return field %s", _c[i]->s);
 	}
 
 	if (_n == 2 && _k[0]->len == str_expires_col.len
 			&& strncmp(_k[0]->s, str_expires_col.s, str_expires_col.len) == 0) {
 		LM_DBG("dbk_presence_query goes to dbk_presence_query_expired\n");
-		return dbk_presentity_query_expired(_r);
+		return dbk_presentity_query_expired(_r, expires);
 	}
 
 	if (!username.len || !domain.len) {
@@ -540,7 +602,7 @@ int dbk_presentity_query(const db1_con_t * _h, const db_key_t * _k,
 
 	if (pu == NULL ) {
 		if(dbk_create_empty_dialog != 0 && strncmp(event.s, str_event_dialog.s, event.len) == 0) {
-			sprintf(user_buf, "%.*s@%*.s",  username.len, username.s,domain.len, domain.s);
+			sprintf(user_buf, "sip:%.*s@%*.s",  username.len, username.s,domain.len, domain.s);
 			user.s = user_buf;
 			user.len = strlen(user_buf);
 			sprintf(pres_body_buf, DIALOGINFO_EMPTY_BODY, user.len, user.s);
@@ -724,13 +786,50 @@ int dbk_presentity_new(const db1_con_t * _h, const db_key_t * db_col,
 	pres_uri.len = strlen(pres_uri_buf);
 
 	hash_code = core_hash(&pres_uri, NULL, dbk_presentity_phtable_size);
+	LM_INFO("inserting presentity %.*s , %.*s, %.*s, %.*s, %d, %d \n",
+			event.len, event.s,
+			domain.len, domain.s,
+			username.len, username.s,
+			sender.len, sender.s,
+			received_time, expires
+			);
+
 	dbk_presentity_htable_delete(&event, &domain, &username, &etag, &sender, &body, received_time, expires, hash_code);
 	dbk_presentity_htable_insert(&event, &domain, &username, &etag, &sender, &body, received_time, expires, hash_code);
 
 	return 0;
 }
 
-int dbk_presentity_update(const db1_con_t * _h, const db_key_t * _k, const db_op_t * _op, const db_val_t * _v, const db_key_t * _uk, const db_val_t * _uv, const int _n, const int _un) {
+int dbk_presentity_new_ex(str *event, str *domain, str* username, str* etag, str* sender, str* body, int expires)
+{
+
+	str pres_uri = {0, 0};
+	int received_time = (int) time(NULL);
+	char pres_uri_buf[1024];
+	unsigned int hash_code;
+
+
+	sprintf(pres_uri_buf, "%.*s:%.*s@%.*s", event->len, event->s, username->len, username->s, domain->len, domain->s);
+	pres_uri.s = pres_uri_buf;
+	pres_uri.len = strlen(pres_uri_buf);
+
+	hash_code = core_hash(&pres_uri, NULL, dbk_presentity_phtable_size);
+	LM_INFO("inserting presentity %.*s , %.*s, %.*s, %.*s, %d, %d \n",
+			event->len, event->s,
+			domain->len, domain->s,
+			username->len, username->s,
+			sender->len, sender->s,
+			received_time, expires
+			);
+
+	dbk_presentity_htable_delete(event, domain, username, etag, sender, body, received_time, received_time+expires, hash_code);
+	dbk_presentity_htable_insert(event, domain, username, etag, sender, body, received_time, received_time+expires, hash_code);
+
+	return 0;
+}
+
+int dbk_presentity_update(const db1_con_t * _h, const db_key_t * _k, const db_op_t * _op, const db_val_t * _v, const db_key_t * _uk, const db_val_t * _uv, const int _n, const int _un)
+{
 	str event = {0, 0}, domain = {0, 0} , username = {0, 0}, etag = {0, 0};
 	str sender = {0, 0}, pres_uri = {0, 0}, body = {0, 0};
 	int i, expires = 0, received_time = 0;
@@ -767,13 +866,13 @@ int dbk_presentity_update(const db1_con_t * _h, const db_key_t * _k, const db_op
 
 
 		if (_v[i].type == DB1_STR) {
-			LM_DBG("presentity update key %s %s %.*s ", _k[i]->s, DBK_DBOP(i), _v[i].val.str_val.len, _v[i].val.str_val.s);
+			LM_INFO("presentity update key %s %s %.*s ", _k[i]->s, DBK_DBOP(i), _v[i].val.str_val.len, _v[i].val.str_val.s);
 		} else if (_v[i].type == DB1_BLOB) {
-			LM_DBG("presentity update key %s %s %.*s ", _k[i]->s, DBK_DBOP(i), _v[i].val.str_val.len, _v[i].val.str_val.s);
+			LM_INFO("presentity update key %s %s %.*s ", _k[i]->s, DBK_DBOP(i), _v[i].val.str_val.len, _v[i].val.str_val.s);
 		} else if (_v[i].type == DB1_INT) {
-			LM_DBG("presentity update key %s %s %i ", _k[i]->s, DBK_DBOP(i), _v[i].val.int_val);
+			LM_INFO("presentity update key %s %s %i ", _k[i]->s, DBK_DBOP(i), _v[i].val.int_val);
 		} else {
-			LM_DBG("presence update other key %s %s %i ", _k[i]->s, DBK_DBOP(i),_v[i].type);
+			LM_INFO("presence update other key %s %s %i ", _k[i]->s, DBK_DBOP(i),_v[i].type);
 		}
 	}
 
@@ -807,13 +906,13 @@ int dbk_presentity_update(const db1_con_t * _h, const db_key_t * _k, const db_op
 
 
 		if (_uv[i].type == DB1_STR) {
-			LM_DBG("presentity update field %s = %.*s ", _uk[i]->s, _uv[i].val.str_val.len, _uv[i].val.str_val.s);
+			LM_INFO("presentity update field %s = %.*s ", _uk[i]->s, _uv[i].val.str_val.len, _uv[i].val.str_val.s);
 		} else if (_uv[i].type == DB1_BLOB) {
-			LM_DBG("presentity update field %s = %.*s ", _uk[i]->s, _uv[i].val.str_val.len, _uv[i].val.str_val.s);
+			LM_INFO("presentity update field %s = %.*s ", _uk[i]->s, _uv[i].val.str_val.len, _uv[i].val.str_val.s);
 		} else if (_uv[i].type == DB1_INT) {
-			LM_DBG("presentity update field %s = %i ", _uk[i]->s, _uv[i].val.int_val);
+			LM_INFO("presentity update field %s = %i ", _uk[i]->s, _uv[i].val.int_val);
 		} else {
-			LM_DBG("presence update other field %s = %i ", _uk[i]->s,_uv[i].type);
+			LM_INFO("presence update other field %s = %i ", _uk[i]->s,_uv[i].type);
 		}
 	}
 
@@ -822,8 +921,17 @@ int dbk_presentity_update(const db1_con_t * _h, const db_key_t * _k, const db_op
 	pres_uri.len = strlen(pres_uri_buf);
 
 	hash_code = core_hash(&pres_uri, NULL, dbk_presentity_phtable_size);
-	dbk_presentity_htable_delete(&event, &domain, &username, &etag, &sender, &body, received_time, expires, hash_code);
-	dbk_presentity_htable_insert(&event, &domain, &username, &etag, &sender, &body, received_time, expires, hash_code);
+	LM_INFO("updating presentity %.*s , %.*s, %.*s, %.*s, %d , %d\nBody: %.*s\n",
+			event.len, event.s,
+			domain.len, domain.s,
+			username.len, username.s,
+			sender.len, sender.s,
+			received_time, expires,
+			body.len, body.s
+			);
+
+//	dbk_presentity_htable_delete(&event, &domain, &username, &etag, &sender, &body, received_time, expires, hash_code);
+//	dbk_presentity_htable_insert(&event, &domain, &username, &etag, &sender, &body, received_time, expires, hash_code);
 
 	return 0;
 
@@ -846,16 +954,16 @@ int dbk_presentity_delete(const db1_con_t * _h, const db_key_t * _k,
         }
 
 		if (_v[i].type == DB1_STR) {
-			LM_DBG("presentity delete field %s %s %.*s ", _k[i]->s, (_op && _op[i] ? _op[i] : "="),
+			LM_INFO("presentity delete field %s %s %.*s ", _k[i]->s, (_op && _op[i] ? _op[i] : "="),
 					_v[i].val.str_val.len, _v[i].val.str_val.s);
 		} else if (_v[i].type == DB1_BLOB) {
-			LM_DBG("presentity delete field %s %s %.*s ", _k[i]->s, (_op && _op[i] ? _op[i] : "="),
+			LM_INFO("presentity delete field %s %s %.*s ", _k[i]->s, (_op && _op[i] ? _op[i] : "="),
 					_v[i].val.str_val.len, _v[i].val.str_val.s);
 		} else if (_v[i].type == DB1_INT) {
-			LM_DBG("presentity delete field %s %s %i ", _k[i]->s, (_op && _op[i] ? _op[i] : "="),
+			LM_INFO("presentity delete field %s %s %i ", _k[i]->s, (_op && _op[i] ? _op[i] : "="),
 					_v[i].val.int_val);
 		} else {
-			LM_DBG("presence delete other field %s %s %i ", _k[i]->s, (_op && _op[i] ? _op[i] : "="), _v[i].type);
+			LM_INFO("presence delete other field %s %s %i ", _k[i]->s, (_op && _op[i] ? _op[i] : "="), _v[i].type);
 		}
 
 	}
@@ -871,6 +979,15 @@ int dbk_presentity_delete(const db1_con_t * _h, const db_key_t * _k,
 				}
 				if(pu == dbk_presentity_phtable[i].tail)
 					dbk_presentity_phtable[i].tail = pu_prev;
+
+				LM_INFO("deleting presentity %.*s , %.*s, %.*s, %.*s, %d , %d\n",
+						pu->event.len, pu->event.s,
+						pu->domain.len, pu->domain.s,
+						pu->username.len, pu->username.s,
+						pu->sender.len, pu->sender.s,
+						pu->received_time, pu->expires
+						);
+
 				dbk_free_presentity(pu);
 			}
 			lock_release(&dbk_presentity_phtable[i].lock);
