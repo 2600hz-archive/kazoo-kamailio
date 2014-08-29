@@ -15,7 +15,7 @@
 #include "../../sr_module.h"
 
 #include "dbase.h"
-#include "blf.h"
+//#include "blf.h"
 #include "presentity.h"
 
 int connections = 0;
@@ -35,22 +35,14 @@ void rmq_close(rmq_conn_t * rmq) {
     }
 
     if (rmq->conn) {
-	LM_DBG("close connection:  %d rmq(%p)->conn(%p)\n", getpid(),
-	       (void *)rmq, rmq->conn);
-	rmq_error("closing connection",
-		  amqp_connection_close(rmq->conn, AMQP_REPLY_SUCCESS));
-
-	if (amqp_destroy_connection(rmq->conn) < 0) {
-	    LM_ERR("cannot destroy connection\n");
-	}
-	rmq->conn = NULL;
-	rmq->socket = NULL;
-	rmq->channel = 0;
-    } else if (rmq->socket) {
-	LM_DBG("close socket: %d rmq(%p)->socket(%p)\n", getpid(), (void *)rmq,
-	       (void *)rmq->socket);
-	amqp_socket_close(rmq->socket);
-	rmq->socket = NULL;
+    	LM_DBG("close connection:  %d rmq(%p)->conn(%p)\n", getpid(), (void *)rmq, rmq->conn);
+    	rmq_error("closing connection", amqp_connection_close(rmq->conn, AMQP_REPLY_SUCCESS));
+    	if (amqp_destroy_connection(rmq->conn) < 0) {
+    		LM_ERR("cannot destroy connection\n");
+    	}
+		rmq->conn = NULL;
+		rmq->socket = NULL;
+		rmq->channel = 0;
     }
 }
 
@@ -58,24 +50,21 @@ int rmqp_open_connection(rmq_conn_t * rmq) {
     LM_DBG("%d rmq:%p  conn:%p  socket:%p  channel:%d\n", getpid(), (void *)rmq,
 	   rmq->conn, (void *)rmq->socket, rmq->channel);
 
-    rmq->socket = amqp_tcp_socket_new();
-    if (!rmq->socket) {
-	LM_DBG("Failed to create TCP socket to AMQP broker\n");
-	goto error;
-    }
-
-    /* TODO - take as module parameters */
-    if (amqp_socket_open(rmq->socket, rmq->id->host, rmq->id->port)) {
-	LM_DBG("Failed to open TCP socket to AMQP broker\n");
-	goto error;
-    }
-
     if (!(rmq->conn = amqp_new_connection())) {
 	LM_DBG("Failed to create new AMQP connection\n");
 	goto error;
     }
 
-    amqp_set_socket(rmq->conn, rmq->socket);
+    rmq->socket = amqp_tcp_socket_new(rmq->conn);
+    if (!rmq->socket) {
+	LM_DBG("Failed to create TCP socket to AMQP broker\n");
+	goto error;
+    }
+
+    if (amqp_socket_open(rmq->socket, rmq->id->host, rmq->id->port)) {
+	LM_DBG("Failed to open TCP socket to AMQP broker\n");
+	goto error;
+    }
 
     if (rmq_error("Logging in", amqp_login(rmq->conn,
 					   "/",
@@ -132,6 +121,7 @@ int presence_initialized = 0;
 void *db_kazoo_new_connection(struct db_id *id) {
     LM_DBG("New db connection to exchange %s for %d process %d\n", id->database,
 	   getpid(), process_no);
+    /*
     if (strncmp(id->database, "dialoginfo", 10) == 0) {
 	if (process_no == 0 && !presence_initialized) {
 	    if (dbk_initialize_presence() < 0) {
@@ -142,9 +132,10 @@ void *db_kazoo_new_connection(struct db_id *id) {
 	}
 	if (process_no == 1) {
 	    LM_DBG("Start presence rmqp consumer processes\n");
-	    dbk_start_presence_rmqp_consumer_processes(id);
+	    //dbk_start_presence_rmqp_consumer_processes(id);
 	}
     }
+    */
 
     return dbk_dummy_db_conn(id);
 }
@@ -906,11 +897,11 @@ int db_kazoo_insert(const db1_con_t * _h, const db_key_t * _k,
 
     LM_DBG("insert into table=%s\n", _h->table->s);
 
-    if (strncmp(_h->table->s, "location", _h->table->len) == 0) {
+    /*if (strncmp(_h->table->s, "location", _h->table->len) == 0) {
 	return amqp_register_notice(_h, _k, _v, _n);
     } else if (strncmp(_h->table->s, "active_watchers", _h->table->len) == 0) {
 	return dbk_presence_subscribe_new(_h, _k, _v, _n);
-    } else if (strncmp(_h->table->s, "presentity", _h->table->len) == 0) {
+    } else*/ if (strncmp(_h->table->s, "presentity", _h->table->len) == 0) {
 	return dbk_presentity_new(_h, _k, _v, _n);
     } else {
 	LM_DBG("Not supported\n");
@@ -927,6 +918,7 @@ int db_kazoo_insert_update(const db1_con_t * _h, const db_key_t * _k,
 
     LM_DBG("insert_update into table=%s\n", _h->table->s);
 
+    /*
     if (strncmp(_h->table->s, "dialoginfo", _h->table->len) == 0) {
 	LM_DBG("Insert update called for dialoginfo table\n");
 	return dbk_dialoginfo_update(_h, _k, _v, _n);
@@ -934,6 +926,9 @@ int db_kazoo_insert_update(const db1_con_t * _h, const db_key_t * _k,
 	LM_DBG("Not supported\n");
 	return 0;
     }
+    */
+	LM_DBG("Not supported\n");
+	return 0;
 }
 
 int db_kazoo_update(const db1_con_t * _h, const db_key_t * _k,
@@ -941,11 +936,11 @@ int db_kazoo_update(const db1_con_t * _h, const db_key_t * _k,
 		    const db_key_t * _uk, const db_val_t * _uv,
                     const int _n, const int _un) {
     LM_DBG("update table=%s\n", _h->table->s);
-    if (strncmp(_h->table->s, "active_watchers", _h->table->len) == 0) {
+    /*if (strncmp(_h->table->s, "active_watchers", _h->table->len) == 0) {
     	LM_DBG("Update called for active_watchers table\n");
     	return dbk_presence_subscribe_update(_h, _k, _v, _uk, _uv, _n, _un);
-    } else if (strncmp(_h->table->s, "presentity", _h->table->len) == 0) {
-    	LM_DBG("Update called for active_watchers table\n");
+    } else*/ if (strncmp(_h->table->s, "presentity", _h->table->len) == 0) {
+    	LM_DBG("Update called for presentity table\n");
         return dbk_presentity_update(_h, _k, _o, _v, _uk, _uv, _n, _un);
     } else {
     	LM_DBG("Not supported\n");
