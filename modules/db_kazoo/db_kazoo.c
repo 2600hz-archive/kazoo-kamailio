@@ -191,7 +191,7 @@ struct module_exports exports = {
 
 
 static int kz_initialize_bindings() {
-    LM_INFO("kz_initialize_bindings\n");
+    LM_DBG("kz_initialize_bindings\n");
 
     /* load all TM stuff */
     if (load_tm_api(&tmb) == -1) {
@@ -414,7 +414,7 @@ static void init_shared_connection(const str* url, void* (*new_connection)(), db
 
 
 db1_con_t *db_kazoo_init(const str * _url) {
-	LM_INFO("DBKAZOO INIT %.*s\n", _url->len, _url->s);
+	LM_DBG("DBKAZOO INIT %.*s\n", _url->len, _url->s);
 	return db_do_init(_url, (void *(*)())db_kazoo_new_connection);
 }
 
@@ -434,7 +434,7 @@ void db_kazoo_close(db1_con_t * _h) {
  */
 
 int db_kazoo_use_table(db1_con_t * _h, const str * _t) {
-	LM_INFO("USE TABLE %.*s\n", _t->len, _t->s);
+	LM_DBG("USE TABLE %.*s\n", _t->len, _t->s);
 	if(_h == NULL && !strncmp(_t->s, "presentity", 10)) {
 		LM_ERR("OUCH!!");
 		return db_use_table(shared_db1, _t);
@@ -445,7 +445,7 @@ int db_kazoo_use_table(db1_con_t * _h, const str * _t) {
 }
 
 int db_kazoo_free_result(db1_con_t * _h, db1_res_t * _r) {
-	LM_INFO("FREE RESULTS");
+	LM_DBG("FREE RESULTS");
     return db_free_result(_r);
 }
 
@@ -460,12 +460,12 @@ int db_kazoo_replace(const db1_con_t * handle, const db_key_t * keys,
 }
 
 int db_kazoo_bind_api(db_func_t * dbb) {
-	LM_INFO("BIND API\n");
+	LM_DBG("BIND API\n");
 
     if (dbb == NULL)
 	return -1;
 
-    LM_INFO("BIND API OK\n");
+    LM_DBG("BIND API OK\n");
 
     memset(dbb, 0, sizeof(db_func_t));
 

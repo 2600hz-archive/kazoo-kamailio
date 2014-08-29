@@ -227,12 +227,12 @@ int kz_amqp_add_connection(modparam_t type, void* val)
 }
 
 void kz_amqp_connection_close(kz_amqp_conn_ptr rmq) {
-    LM_INFO("Close rmq connection\n");
+    LM_DBG("Close rmq connection\n");
     if (!rmq)
     	return;
 
     if (rmq->conn) {
-		LM_INFO("close connection:  %d rmq(%p)->conn(%p)\n", getpid(), (void *)rmq, rmq->conn);
+		LM_DBG("close connection:  %d rmq(%p)->conn(%p)\n", getpid(), (void *)rmq, rmq->conn);
 		rmq_error("closing connection", amqp_connection_close(rmq->conn, AMQP_REPLY_SUCCESS));
 		if (amqp_destroy_connection(rmq->conn) < 0) {
 			LM_ERR("cannot destroy connection\n");
@@ -248,29 +248,29 @@ void kz_amqp_connection_close(kz_amqp_conn_ptr rmq) {
 }
 
 void kz_amqp_channel_close(kz_amqp_conn_ptr rmq, amqp_channel_t channel) {
-    LM_INFO("Close rmq channel\n");
+    LM_DBG("Close rmq channel\n");
     if (!rmq)
     	return;
 
-	LM_INFO("close channel: %d rmq(%p)->channel(%d)\n", getpid(), (void *)rmq, channel);
+	LM_DBG("close channel: %d rmq(%p)->channel(%d)\n", getpid(), (void *)rmq, channel);
 	rmq_error("closing channel", amqp_channel_close(rmq->conn, channel, AMQP_REPLY_SUCCESS));
 }
 
 int kz_amqp_connection_open(kz_amqp_conn_ptr rmq) {
 	rmq->channel_count = rmq->channel_counter = 0;
     if (!(rmq->conn = amqp_new_connection())) {
-    	LM_INFO("Failed to create new AMQP connection\n");
+    	LM_DBG("Failed to create new AMQP connection\n");
     	goto error;
     }
 
     rmq->socket = amqp_tcp_socket_new(rmq->conn);
     if (!rmq->socket) {
-    	LM_INFO("Failed to create TCP socket to AMQP broker\n");
+    	LM_DBG("Failed to create TCP socket to AMQP broker\n");
     	goto error;
     }
 
     if (amqp_socket_open(rmq->socket, rmq->info.host, rmq->info.port)) {
-    	LM_INFO("Failed to open TCP socket to AMQP broker\n");
+    	LM_DBG("Failed to open TCP socket to AMQP broker\n");
     	goto error;
     }
 
@@ -296,7 +296,7 @@ int kz_amqp_connection_open(kz_amqp_conn_ptr rmq) {
 
 int kz_amqp_channel_open(kz_amqp_conn_ptr rmq, amqp_channel_t channel) {
 	if(rmq == NULL) {
-		LM_INFO("rmq == NULL \n");
+		LM_DBG("rmq == NULL \n");
 		return -1;
 	}
 
@@ -397,7 +397,7 @@ int kz_amqp_consume_error(amqp_connection_state_t conn)
 				break;
 			}
 
-			LM_INFO("Received this message : %.*s\n", (int) message.body.len, (char*)message.body.bytes);
+			LM_DBG("Received this message : %.*s\n", (int) message.body.len, (char*)message.body.bytes);
 			amqp_destroy_message(&message);
 			}
 			break;
@@ -1001,7 +1001,7 @@ int kz_amqp_bind_consumer(kz_amqp_conn_ptr kz_conn, kz_amqp_bind_ptr bind)
 		goto error;
     }
 
-    LM_INFO("QUEUE BIND\n");
+    LM_DBG("QUEUE BIND\n");
     if (amqp_queue_bind(kz_conn->conn, channels[idx].channel, bind->queue, bind->exchange, bind->routing_key, amqp_empty_table) < 0
 	    || rmq_error("Binding queue", amqp_get_rpc_reply(kz_conn->conn)))
     {
@@ -1009,7 +1009,7 @@ int kz_amqp_bind_consumer(kz_amqp_conn_ptr kz_conn, kz_amqp_bind_ptr bind)
 		goto error;
     }
 
-    LM_INFO("BASIC CONSUME\n");
+    LM_DBG("BASIC CONSUME\n");
     if (amqp_basic_consume(kz_conn->conn, channels[idx].channel, bind->queue, amqp_empty_bytes, 0, 1, 0, amqp_empty_table) < 0
 	    || rmq_error("Consuming", amqp_get_rpc_reply(kz_conn->conn)))
     {
@@ -1117,7 +1117,7 @@ int kz_amqp_send_receive(kz_amqp_conn_ptr kz_conn, kz_amqp_cmd_ptr cmd )
 
 void kz_amqp_presence_consumer_loop(int child_no)
 {
-	LM_INFO("starting consumer %d\n", child_no);
+	LM_DBG("starting consumer %d\n", child_no);
 	close(kz_pipe_fds[child_no*2+1]);
 	int data_pipe = kz_pipe_fds[child_no*2];
 
@@ -1164,7 +1164,7 @@ void kz_amqp_presence_consumer_loop(int child_no)
 		kz_amqp_free_pipe_cmd(cmd);
 	} else {
 		lock_get(&cmd->lock);
-		LM_INFO("starting consumer loop %d\n", child_no);
+		LM_DBG("starting consumer loop %d\n", child_no);
 		while(1) {
     		FD_ZERO(&fdset);
     		FD_SET(data_pipe, &fdset);
@@ -1177,9 +1177,9 @@ void kz_amqp_presence_consumer_loop(int child_no)
     		} else {
 				if(FD_ISSET(data_pipe, &fdset)) {
 					char *payload;
-	    			LM_INFO("trying to read\n");
+	    			LM_DBG("trying to read\n");
 					if(read(data_pipe, &payload, sizeof(payload)) == sizeof(payload)) {
-						LM_INFO("consumer %d received payload %s\n", child_no, payload);
+						LM_DBG("consumer %d received payload %s\n", child_no, payload);
 						rmqp_pres_update_handle(payload);
 						shm_free(payload);
 					}
@@ -1188,7 +1188,7 @@ void kz_amqp_presence_consumer_loop(int child_no)
     	}
 	}
 error:
-	LM_INFO("exiting consumer %d\n", child_no);
+	LM_DBG("exiting consumer %d\n", child_no);
 }
 
 */
@@ -1208,11 +1208,11 @@ int kz_amqp_consumer_fire_event(char *eventkey)
 	struct run_act_ctx ctx;
 	int rtb, rt;
 
-	LM_INFO("searching event_route[%s]\n", eventkey);
+	LM_DBG("searching event_route[%s]\n", eventkey);
 	rt = route_get(&event_rt, eventkey);
 	if (rt < 0 || event_rt.rlist[rt] == NULL)
 	{
-		LM_INFO("route %s does not exist\n", eventkey);
+		LM_DBG("route %s does not exist\n", eventkey);
 		return -2;
 	}
 	LM_DBG("executing event_route[%s] (%d)\n", eventkey, rt);
@@ -1274,7 +1274,7 @@ void kz_amqp_consumer_loop(int child_no)
 //	str dummy_str = str_init("kazoo://localhost");
 //	db1_con_t* _dummy = db_kazoo_init(&dummy_str);
 
-	LM_INFO("starting consumer %d\n", child_no);
+	LM_DBG("starting consumer %d\n", child_no);
 	close(kz_pipe_fds[child_no*2+1]);
 	int data_pipe = kz_pipe_fds[child_no*2];
 
@@ -1302,7 +1302,7 @@ void kz_amqp_consumer_loop(int child_no)
 			}
     	}
 	}
-	LM_INFO("exiting consumer %d\n", child_no);
+	LM_DBG("exiting consumer %d\n", child_no);
 }
 
 int check_timeout(struct timeval *now, struct timeval *start, struct timeval *timeout)
@@ -1364,7 +1364,7 @@ error:
 
 void kz_amqp_manager_loop(int child_no)
 {
-	LM_INFO("starting manager %d\n", child_no);
+	LM_DBG("starting manager %d\n", child_no);
 	close(kz_pipe_fds[child_no*2+1]);
 	int data_pipe = kz_pipe_fds[child_no*2];
     fd_set fdset;
@@ -1395,7 +1395,7 @@ void kz_amqp_manager_loop(int child_no)
     		kzconn = kz_amqp_get_next_connection();
     		if(kzconn != NULL)
     			break;
-    		LM_INFO("Connection failed : all servers down?");
+    		LM_DBG("Connection failed : all servers down?");
     		sleep(3);
     	}
 
@@ -1479,7 +1479,7 @@ void kz_amqp_manager_loop(int child_no)
 								}
 								break;
 							default:
-								LM_INFO("unknown pipe cmd %d\n", cmd->type);
+								LM_DBG("unknown pipe cmd %d\n", cmd->type);
 								break;
 							}
 						}
@@ -1505,7 +1505,7 @@ void kz_amqp_manager_loop(int child_no)
 						CONSUME = 0;
 						break;
 					case AMQP_STATUS_UNEXPECTED_STATE:
-						LM_INFO("AMQP_STATUS_UNEXPECTED_STATE\n");
+						LM_DBG("AMQP_STATUS_UNEXPECTED_STATE\n");
 						OK = CONSUME = kz_amqp_consume_error(kzconn->conn);
 						break;
 					default:
