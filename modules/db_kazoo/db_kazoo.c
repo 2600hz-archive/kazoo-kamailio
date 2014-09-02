@@ -50,7 +50,7 @@
 #include "kz_trans.h"
 #include "kz_pua.h"
 
-#define DBK_PRES_WORKERS_NO 6
+#define DBK_DEFAULT_NO_CONSUMERS 4
 
 static int mod_init(void);
 static int  mod_child_init(int rank);
@@ -74,9 +74,8 @@ int dbk_mwi_expires = 3600;
 int dbk_create_empty_dialog = 1;
 
 int dbk_channels = 50;
-int dbk_presence_workers = DBK_PRES_WORKERS_NO;
 
-int dbk_consumer_processes = DBK_PRES_WORKERS_NO;
+int dbk_consumer_processes = DBK_DEFAULT_NO_CONSUMERS;
 
 struct timeval kz_sock_tv = (struct timeval){0,100000};
 struct timeval kz_amqp_tv = (struct timeval){0,100000};
@@ -110,7 +109,6 @@ static tr_export_t mod_trans[] = {
 static pv_export_t kz_mod_pvs[] = {
 	{{"kzR", (sizeof("kzR")-1)}, PVT_OTHER, kz_pv_get_last_query_result, 0,	0, 0, 0, 0},
 	{{"kzE", (sizeof("kzE")-1)}, PVT_OTHER, kz_pv_get_event_payload, 0,	0, 0, 0, 0},
-	{{"kzH", (sizeof("kzH")-1)}, PVT_OTHER, kz_pv_get_connection_host, 0,	0, 0, 0, 0},
 	{ {0, 0}, 0, 0, 0, 0, 0, 0, 0 }
 };
 
@@ -149,7 +147,6 @@ static param_export_t params[] = {
     {"create_empty_dialog", INT_PARAM, &dbk_create_empty_dialog},
     {"amqp_connection", STR_PARAM|USE_FUNC_PARAM,(void*)kz_amqp_add_connection},
     {"amqp_max_channels", INT_PARAM, &dbk_channels},
-    {"amqp_presence_consumers", INT_PARAM, &dbk_presence_workers},
     {"amqp_interprocess_timeout_micro", INT_PARAM, &kz_sock_tv.tv_usec},
     {"amqp_interprocess_timeout_sec", INT_PARAM, &kz_sock_tv.tv_sec},
     {"amqp_waitframe_timout_micro", INT_PARAM, &kz_amqp_tv.tv_usec},
@@ -245,6 +242,7 @@ static int mod_init(void) {
    	dbk_consumer_event_subkey.len = strlen(dbk_consumer_event_subkey.s);
 
     dbk_presentity_initialize();
+    kz_amqp_init();
 
     str _dummy_url = str_init("kazoo://shared_memory/");
     init_shared_connection(&_dummy_url, (void *(*)())db_kazoo_new_shared_connection, DB_POOLING_PERMITTED);
@@ -259,7 +257,7 @@ static int mod_init(void) {
 //    	return -1;
 //    }
 
-    int total_workers = dbk_presence_workers + 1;
+    int total_workers = dbk_consumer_processes + 1;
     kz_pipe_fds = (int*) shm_malloc(sizeof(int) * total_workers * 2 );
 
     for(i=0; i < total_workers; i++) {
@@ -303,7 +301,7 @@ static int mod_child_init(int rank)
 			kz_amqp_manager_loop(0);
 		}
 		else {
-			for(i=0; i < dbk_presence_workers; i++) {
+			for(i=0; i < dbk_consumer_processes; i++) {
 				pid=fork_process(PROC_NOCHLDINIT, "AMQP Consumer", 1);
 				if (pid<0)
 					return -1; /* error */
@@ -487,10 +485,12 @@ int db_kazoo_bind_api(db_func_t * dbb) {
 
 static void mod_destroy(void) {
 	dbk_presentity_destroy();
+	kz_amqp_destroy();
 	if(shared_db1) {
 		shm_free((void *)shared_db1->tail);
 		shm_free(shared_db1);
 	}
+    shm_free(kz_pipe_fds);
 }
 
 

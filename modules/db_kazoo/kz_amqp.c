@@ -194,21 +194,70 @@ error:
     return NULL;
 }
 
-
-void kz_amqp_init() {
+void kz_amqp_init_connection_pool() {
 	if(kz_pool == NULL) {
 		kz_pool = (kz_amqp_conn_pool_ptr) shm_malloc(sizeof(kz_amqp_conn_pool));
 		memset(kz_pool, 0, sizeof(kz_amqp_conn_pool));
 	}
+}
+
+void kz_amqp_init() {
+	int i;
+	kz_amqp_init_connection_pool();
 	if(kz_bindings == NULL) {
 		kz_bindings = (kz_amqp_bindings_ptr) shm_malloc(sizeof(kz_amqp_bindings));
 		memset(kz_bindings, 0, sizeof(kz_amqp_bindings));
 	}
+	if(channels == NULL) {
+		channels = shm_malloc(dbk_channels * sizeof(kz_amqp_channel));
+		memset(channels, 0, dbk_channels * sizeof(kz_amqp_channel));
+		for(i=0; i < dbk_channels; i++) {
+			channels[i].channel = i+1;
+		}
+	}
+}
+
+void kz_amqp_destroy() {
+	int i;
+	if(channels != NULL) {
+		for(i=0; i < dbk_channels; i++) {
+			if(channels[i].targeted != NULL) {
+				kz_amqp_free_bind(channels[i].targeted);
+			}
+		}
+		shm_free(channels);
+	}
+
+
+	if(kz_bindings != NULL) {
+		kz_amqp_binding_ptr binding = kz_bindings->head;
+		while(binding != NULL) {
+			kz_amqp_binding_ptr free = binding;
+			binding = binding->next;
+			if(free->bind != NULL) {
+				kz_amqp_free_bind(free->bind);
+			}
+			shm_free(free);
+		}
+		shm_free(kz_bindings);
+	}
+
+	if(kz_pool != NULL) {
+		kz_amqp_conn_ptr conn = kz_pool->head;
+		while(conn != NULL) {
+			kz_amqp_conn_ptr free = conn;
+			conn = conn->next;
+			shm_free(free);
+		}
+		shm_free(kz_pool);
+	}
+
+
 }
 
 int kz_amqp_add_connection(modparam_t type, void* val)
 {
-	kz_amqp_init(); // find a better way
+	kz_amqp_init_connection_pool(); // find a better way
 
 	kz_amqp_conn_ptr newConn = shm_malloc(sizeof(kz_amqp_conn));
 	memset(newConn, 0, sizeof(kz_amqp_conn));
@@ -721,8 +770,6 @@ int kz_amqp_query(struct sip_msg* msg, char* exchange, char* routing_key, char* 
 
 int kz_amqp_subscribe(struct sip_msg* msg, char* exchange, char* exchange_type, char* queue, char* routing_key)
 {
-	kz_amqp_init(); // find a better way
-
 	str exchange_s;
 	str exchange_type_s;
 	str queue_s;
@@ -1113,94 +1160,12 @@ int kz_amqp_send_receive(kz_amqp_conn_ptr kz_conn, kz_amqp_cmd_ptr cmd )
 	return kz_amqp_send_receive_ex(kz_conn, cmd, -1 );
 }
 
-/*
-
-void kz_amqp_presence_consumer_loop(int child_no)
-{
-	LM_DBG("starting consumer %d\n", child_no);
-	close(kz_pipe_fds[child_no*2+1]);
-	int data_pipe = kz_pipe_fds[child_no*2];
-
-	fd_set fdset;
-    int selret;
-
-    char blf_queue_buffer[512];
-    str unique_string = { 0, 0 };
-    tmb.generate_callid(&unique_string);
-
-	str exchange = str_init("dialoginfo");
-	str exchange_type = str_init("direct");
-	str queue;
-
-
-	queue.s = blf_queue_buffer;
-    queue.len = sprintf(blf_queue_buffer, "BLF-%.*s-%.*s",
-			    dbk_node_hostname.len, dbk_node_hostname.s,
-			    unique_string.len, unique_string.s);
-
-
-	kz_amqp_cmd_ptr cmd = (kz_amqp_cmd_ptr)shm_malloc(sizeof(kz_amqp_cmd));
-	if(cmd == NULL) {
-		LM_ERR("error allocation memory for cmd in consumer %d\n", child_no);
-		goto error;
-	}
-	memset(cmd, 0, sizeof(kz_amqp_cmd));
-	cmd->consumer = child_no;
-	cmd->exchange = kz_amqp_str_dup(&exchange);
-	cmd->exchange_type = kz_amqp_str_dup(&exchange_type);
-	cmd->queue = kz_amqp_str_dup(&queue);
-	if(cmd->exchange == NULL || cmd->exchange_type == NULL || cmd->queue == NULL ) {
-		LM_ERR("error allocation memory for cmd parameters in consumer %d\n", child_no);
-		goto error;
-	}
-	cmd->type = KZ_AMQP_CONSUME;
-	if(lock_init(&cmd->lock) == NULL) {
-		LM_ERR("error initializing lock for cmd in consumer %d\n", child_no);
-		goto error;
-	}
-	lock_get(&cmd->lock);
-	if (write(kz_pipe_fds[1], &cmd, sizeof(cmd)) != sizeof(cmd)) {
-		LM_ERR("failed to start_consumer %d, write to command pipe: %s\n", child_no, strerror(errno));
-		kz_amqp_free_pipe_cmd(cmd);
-	} else {
-		lock_get(&cmd->lock);
-		LM_DBG("starting consumer loop %d\n", child_no);
-		while(1) {
-    		FD_ZERO(&fdset);
-    		FD_SET(data_pipe, &fdset);
-
-    		selret = select(FD_SETSIZE, &fdset, NULL, NULL, &kz_sock_tv);
-
-    		if (selret < 0) {
-    			LM_ERR("select() failed: %s\n", strerror(errno));
-    		} else if (!selret) {
-    		} else {
-				if(FD_ISSET(data_pipe, &fdset)) {
-					char *payload;
-	    			LM_DBG("trying to read\n");
-					if(read(data_pipe, &payload, sizeof(payload)) == sizeof(payload)) {
-						LM_DBG("consumer %d received payload %s\n", child_no, payload);
-						rmqp_pres_update_handle(payload);
-						shm_free(payload);
-					}
-				}
-    		}
-    	}
-	}
-error:
-	LM_DBG("exiting consumer %d\n", child_no);
-}
-
-*/
-
 char* eventData = NULL;
 
 int kz_pv_get_event_payload(struct sip_msg *msg, pv_param_t *param,	pv_value_t *res)
 {
 	return eventData == NULL ? pv_get_null(msg, param, res) : pv_get_strzval(msg, param, res, eventData);
 }
-
-
 
 int kz_amqp_consumer_fire_event(char *eventkey)
 {
@@ -1271,9 +1236,6 @@ void kz_amqp_consumer_event(int child_no, char *payload)
 void kz_amqp_consumer_loop(int child_no)
 {
 
-//	str dummy_str = str_init("kazoo://localhost");
-//	db1_con_t* _dummy = db_kazoo_init(&dummy_str);
-
 	LM_DBG("starting consumer %d\n", child_no);
 	close(kz_pipe_fds[child_no*2+1]);
 	int data_pipe = kz_pipe_fds[child_no*2];
@@ -1285,7 +1247,6 @@ void kz_amqp_consumer_loop(int child_no)
     	FD_ZERO(&fdset);
     	FD_SET(data_pipe, &fdset);
 
-//    	selret = select(FD_SETSIZE, &fdset, NULL, NULL, &kz_sock_tv);
     	selret = select(FD_SETSIZE, &fdset, NULL, NULL, NULL);
 
     	if (selret < 0) {
@@ -1316,50 +1277,28 @@ int check_timeout(struct timeval *now, struct timeval *start, struct timeval *ti
 	return 0;
 }
 
-char *connection_host = NULL;
+int consumer = 1;
 
-int kz_pv_get_connection_host(struct sip_msg *msg, pv_param_t *param,	pv_value_t *res)
+void kz_amqp_send_consumer_event(char* payload)
 {
-	return connection_host == NULL ? pv_get_null(msg, param, res) : pv_get_strzval(msg, param, res, connection_host);
+	if (write(kz_pipe_fds[consumer*2+1], &payload, sizeof(payload)) != sizeof(payload)) {
+		LM_ERR("failed to send payload to consumer %d : %s\nPayload %s\n", consumer, strerror(errno), payload);
+	};
+	consumer++;
+	if(consumer > dbk_consumer_processes) {
+		consumer = 1;
+	}
 }
 
-int kz_amqp_fire_script_event(char* p_eventname, char* host)
+void kz_amqp_fire_connection_event(char *event, char* host)
 {
-	struct sip_msg *fmsg;
-	struct run_act_ctx ctx;
-	int rtb, rt;
-	int ret = 0;
-
-	char eventname[100];
-	sprintf(eventname,"kazoo:%s", p_eventname);
-
-	connection_host = host;
-
-	rt = route_get(&event_rt, eventname);
-	if(rt>=0 && event_rt.rlist[rt]!=NULL) {
-		LM_DBG("executing event_route[%s] (%d)\n", eventname, rt);
-		if(faked_msg_init()<0) {
-			LM_ERR("error creating fake_msg\n");
-			ret = -1;
-			goto error;
-		}
-		fmsg = faked_msg_next();
-		rtb = get_route_type();
-		set_route_type(REQUEST_ROUTE);
-		init_run_actions_ctx(&ctx);
-		run_top_route(event_rt.rlist[rt], fmsg, &ctx);
-		if(ctx.run_flags&DROP_R_F)
-		{
-			LM_ERR("exit due to 'drop' in event route\n");
-			ret = -1;
-			goto error;
-		}
-		set_route_type(rtb);
-	}
-
-error:
-	connection_host = NULL;
-	return ret;
+	char* payload = (char*)shm_malloc(512);
+	sprintf(payload, "{ \"%.*s\" : \"connection\", \"%.*s\" : \"%s\", \"host\" : \"%s\" }",
+			dbk_consumer_event_key.len, dbk_consumer_event_key.s,
+			dbk_consumer_event_subkey.len, dbk_consumer_event_subkey.s,
+			event, host
+			);
+	kz_amqp_send_consumer_event(payload);
 }
 
 void kz_amqp_manager_loop(int child_no)
@@ -1373,16 +1312,11 @@ void kz_amqp_manager_loop(int child_no)
 	int INTERNAL_READ, CONSUME, OK;
 	int INTERNAL_READ_COUNT , INTERNAL_READ_MAX_LOOP;
 	int CONSUMER_READ_COUNT , CONSUMER_READ_MAX_LOOP;
-	int consumer;
 	char* payload;
 	int channel_res;
     kz_amqp_conn_ptr kzconn;
 	kz_amqp_cmd_ptr cmd;
-    channels = pkg_malloc(dbk_channels * sizeof(kz_amqp_channel));
     int loopcount = 0;
-	for(i=0; i < dbk_channels; i++) {
-		channels[i].channel = i+1;
-	}
 
     while(1) {
 
@@ -1399,7 +1333,7 @@ void kz_amqp_manager_loop(int child_no)
     		sleep(3);
     	}
 
-    	kz_amqp_fire_script_event("connection-open", kzconn->info.host);
+    	kz_amqp_fire_connection_event("open", kzconn->info.host);
 
     	loopcount++;
     	for(i=0,channel_res=0; i < dbk_channels && channel_res == 0; i++) {
@@ -1432,7 +1366,6 @@ void kz_amqp_manager_loop(int child_no)
     			binding = binding->next;
     		}
     	}
-    	consumer = 1;
 
     	while(OK) {
         	INTERNAL_READ = 1;
@@ -1525,14 +1458,7 @@ void kz_amqp_manager_loop(int child_no)
 						channels[idx].cmd = NULL;
 						break;
 					case KZ_AMQP_CONSUMING:
-						payload = kz_amqp_bytes_dup(envelope.message.body);
-						if (write(kz_pipe_fds[consumer*2+1], &payload, sizeof(payload)) != sizeof(payload)) {
-							LM_ERR("failed to send payload to consumer %d : %s\nPayload %s\n", consumer, strerror(errno), payload);
-						};
-						consumer++;
-						if(consumer > dbk_consumer_processes) {
-							consumer = 1;
-						}
+						kz_amqp_send_consumer_event(kz_amqp_bytes_dup(envelope.message.body));
 						break;
 					default:
 						break;
@@ -1572,6 +1498,6 @@ void kz_amqp_manager_loop(int child_no)
 
     	}
     	kz_amqp_connection_close(kzconn);
-    	kz_amqp_fire_script_event("connection-closed", kzconn->info.host);
+    	kz_amqp_fire_connection_event("closed", kzconn->info.host);
     }
 }

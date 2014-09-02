@@ -184,7 +184,7 @@ dbk_presentity_t *dbk_presentity_htable_new(str *event, str *domain, str *userna
 	return pu;
 }
 
-int dbk_presentity_htable_insert(str *event, str *domain, str *username, str * etag,
+int dbk_presentity_htable_insert_nolock(str *event, str *domain, str *username, str * etag,
 		str * sender, str * body, int received_time, int expires,
 		unsigned int hash_code) {
 	dbk_presentity_t *pu = dbk_presentity_htable_new(event, domain, username, etag,
@@ -195,7 +195,6 @@ int dbk_presentity_htable_insert(str *event, str *domain, str *username, str * e
 		return -1;
 	}
 
-	lock_get(&dbk_presentity_phtable[hash_code].lock);
 	if(dbk_presentity_phtable[hash_code].tail != NULL) {
 		dbk_presentity_phtable[hash_code].tail->next = pu;
 	}
@@ -203,17 +202,29 @@ int dbk_presentity_htable_insert(str *event, str *domain, str *username, str * e
 		dbk_presentity_phtable[hash_code].pu = pu;
 	}
 	dbk_presentity_phtable[hash_code].tail = pu;
-	lock_release(&dbk_presentity_phtable[hash_code].lock);
 	return 0;
 }
 
-int dbk_presentity_htable_delete(str *event, str *domain, str *username, str * etag,
+int dbk_presentity_htable_insert(str *event, str *domain, str *username, str * etag,
+		str * sender, str * body, int received_time, int expires,
+		unsigned int hash_code) {
+
+	lock_get(&dbk_presentity_phtable[hash_code].lock);
+
+	int ret = dbk_presentity_htable_insert_nolock(event, domain, username, etag,
+			sender, body, received_time, expires,
+			hash_code);
+
+	lock_release(&dbk_presentity_phtable[hash_code].lock);
+	return ret;
+}
+
+int dbk_presentity_htable_delete_nolock(str *event, str *domain, str *username, str * etag,
 		str * sender, str * body, int received_time, int expires,
 		unsigned int hash_code) {
 
 	dbk_presentity_t *pu, *pu_prev = NULL;
 
-	lock_get(&dbk_presentity_phtable[hash_code].lock);
 
 	for (pu = dbk_presentity_phtable[hash_code].pu; pu; pu = pu->next) {
 		if (pu->domain.len == domain->len
@@ -240,12 +251,23 @@ int dbk_presentity_htable_delete(str *event, str *domain, str *username, str * e
 
 		dbk_free_presentity(pu);
 	}
+	return 0;
+}
+
+int dbk_presentity_htable_delete(str *event, str *domain, str *username, str * etag,
+		str * sender, str * body, int received_time, int expires,
+		unsigned int hash_code) {
+
+	lock_get(&dbk_presentity_phtable[hash_code].lock);
+	dbk_presentity_htable_delete_nolock(event, domain, username, etag, sender, body, received_time, expires, hash_code);
 	lock_release(&dbk_presentity_phtable[hash_code].lock);
 	return 0;
 }
 
 int dbk_presentity_flush(int flush_all, str *event, str * domain, str * user) {
 	dbk_presentity_t *pu;
+	dbk_presentity_t *next;
+	int i;
 
 	if (flush_all) {
 		int i;
@@ -264,24 +286,24 @@ int dbk_presentity_flush(int flush_all, str *event, str * domain, str * user) {
 		int hash_code;
 		dbk_presentity_t *pu_prev = NULL;
 
-		// TODO
-		hash_code = core_hash(domain, user, dbk_presentity_phtable_size);
-		lock_get(&dbk_presentity_phtable[hash_code].lock);
-		pu = dbk_presentity_search(hash_code, event, domain, user, &pu_prev, 0);
-		if (pu == NULL ) {
-			LM_DBG("FLUSH: No record found for user %.*s\n", user->len, user->s);
-			lock_release(&dbk_presentity_phtable[hash_code].lock);
-		} else {
-			LM_DBG("FLUSH: Delete record for user %.*s\n", user->len, user->s);
-			if (pu_prev) {
-				pu_prev->next = pu->next;
-			} else {
-				dbk_presentity_phtable[hash_code].pu = pu->next;
+		for(i=0; i < dbk_presentity_phtable_size; i++) {
+			lock_get(&dbk_presentity_phtable[i].lock);
+			if(dbk_presentity_phtable[i].pu != NULL) {
+				pu = dbk_presentity_phtable[i].pu;
+				if( (!strncmp(pu->event.s, event->s, pu->event.len )) &&
+						((!strcnmp(pu->domain.s, domain->s, pu->domain.len)) || domain->len == 0) &&
+						((!strcnmp(pu->username.s, user->s, pu->username.len)) || user->len == 0)
+						) {
+					while(pu != NULL) {
+						next = pu;
+						pu = pu->next;
+						shm_free(next);
+					}
+					dbk_presentity_phtable[i].pu = dbk_presentity_phtable[i].tail = NULL;
+				}
 			}
-			lock_release(&dbk_presentity_phtable[hash_code].lock);
-			dbk_free_presentity(pu);
+			lock_release(&dbk_presentity_phtable[i].lock);
 		}
-
 	}
 	return 0;
 }
@@ -300,7 +322,7 @@ int w_mi_dbk_presentity_flush(struct sip_msg* msg)
 struct mi_root *mi_dbk_presentity_flush(struct mi_root *cmd, void *param) {
 	struct mi_node *node = NULL;
 	str type;
-	str user, event, domain;
+	str user = {0,0}, event = {0,0}, domain={0,0};
 	int flush_all = 0;
 
 	node = cmd->node.kids;
@@ -315,7 +337,7 @@ struct mi_root *mi_dbk_presentity_flush(struct mi_root *cmd, void *param) {
 	type = node->value;
 	if (type.s == NULL || type.len == 0) {
 		LM_ERR("first parameter empty\n");
-		return init_mi_tree(404, "Missing parameter ('all' or 'user')", 35);
+		return init_mi_tree(404, "Missing parameter ('all' or 'event')", 35);
 	}
 
 	LM_DBG("Flush type=[%.*s]\n", type.len, type.s);
@@ -324,14 +346,7 @@ struct mi_root *mi_dbk_presentity_flush(struct mi_root *cmd, void *param) {
 		LM_DBG("Flush all\n");
 		flush_all = 1;
 	} else {
-		node = node->next;
-		if (node == NULL )
-			return 0;
 		event = node->value;
-		if (event.s == NULL || event.len == 0) {
-			LM_ERR("No event provided\n");
-			return init_mi_tree(404, "No event provided", 20);
-		}
 
 		if(node->next != NULL) {
 			node = node->next;
@@ -822,8 +837,10 @@ int dbk_presentity_new_ex(str *event, str *domain, str* username, str* etag, str
 			received_time, expires
 			);
 
-	dbk_presentity_htable_delete(event, domain, username, etag, sender, body, received_time, received_time+expires, hash_code);
-	dbk_presentity_htable_insert(event, domain, username, etag, sender, body, received_time, received_time+expires, hash_code);
+	lock_get(&dbk_presentity_phtable[hash_code].lock);
+	dbk_presentity_htable_delete_nolock(event, domain, username, etag, sender, body, received_time, received_time+expires, hash_code);
+	dbk_presentity_htable_insert_nolock(event, domain, username, etag, sender, body, received_time, received_time+expires, hash_code);
+	lock_release(&dbk_presentity_phtable[hash_code].lock);
 
 	return 0;
 }

@@ -99,6 +99,8 @@ typedef struct {
 	kz_amqp_binding_ptr tail;
 } kz_amqp_bindings, *kz_amqp_bindings_ptr;
 
+void kz_amqp_init();
+void kz_amqp_destroy();
 int kz_amqp_add_connection(modparam_t type, void* val);
 
 int kz_amqp_publish(struct sip_msg* msg, char* exchange, char* routing_key, char* payload);
