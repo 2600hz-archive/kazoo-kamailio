@@ -87,6 +87,7 @@ str dbk_consumer_event_subkey = str_init("Event-Name");
 int dbk_internal_loop_count = 5;
 int dbk_consumer_loop_count = 10;
 int dbk_include_entity = 0;
+int dbk_pua_mode = 0;
 
 struct tm_binds tmb;
 pua_api_t kz_pua_api;
@@ -98,6 +99,11 @@ int *kz_pipe_fds = NULL;
 
 db1_con_t * shared_db1 = NULL;
 
+/* database connection */
+db1_con_t *kz_pa_db = NULL;
+db_func_t kz_pa_dbf;
+str kz_presentity_table = str_init("presentity");
+str kz_db_url = {0,0};
 
 MODULE_VERSION
 
@@ -130,7 +136,7 @@ static cmd_export_t cmds[] = {
     {"kazoo_subscribe", (cmd_function) kz_amqp_subscribe_2, 2, fixup_kz_amqp4, fixup_kz_amqp4_free, ANY_ROUTE},
     {"kazoo_subscribe", (cmd_function) kz_amqp_subscribe_3, 3, fixup_kz_amqp4, fixup_kz_amqp4_free, ANY_ROUTE},
 */
-    {"kazoo_subscribe", (cmd_function) kz_amqp_subscribe, 1, 0, 0, ANY_ROUTE},
+    {"kazoo_subscribe", (cmd_function) kz_amqp_subscribe, 1, fixup_kz_amqp4, fixup_kz_amqp4_free, ANY_ROUTE},
     {"kazoo_subscribe", (cmd_function) kz_amqp_subscribe_simple, 4, fixup_kz_amqp4, fixup_kz_amqp4_free, ANY_ROUTE},
 
 
@@ -163,6 +169,10 @@ static param_export_t params[] = {
     {"amqp_internal_loop_count", INT_PARAM, &dbk_internal_loop_count},
     {"amqp_consumer_loop_count", INT_PARAM, &dbk_consumer_loop_count},
     {"pua_include_entity", INT_PARAM, &dbk_include_entity},
+    {"presentity_table", STR_PARAM, &kz_presentity_table.s},
+	{ "db_url",                 STR_PARAM, &kz_db_url.s},
+    {"pua_mode", INT_PARAM, &dbk_pua_mode},
+
     {0, 0, 0}
 };
 
@@ -260,6 +270,37 @@ static int mod_init(void) {
 //    	LM_ERR("Can't load pua functions. Module pua not loaded?\n");
 //    	return -1;
 //    }
+
+	kz_db_url.len = kz_db_url.s ? strlen(kz_db_url.s) : 0;
+	LM_DBG("db_url=%s/%d/%p\n", ZSW(kz_db_url.s), kz_db_url.len,kz_db_url.s);
+	kz_presentity_table.len = strlen(kz_presentity_table.s);
+
+	if(kz_db_url.len > 0) {
+
+		/* binding to database module  */
+		if (db_bind_mod(&kz_db_url, &kz_pa_dbf))
+		{
+			LM_ERR("Database module not found\n");
+			return -1;
+		}
+
+
+		if (!DB_CAPABILITY(kz_pa_dbf, DB_CAP_ALL))
+		{
+			LM_ERR("Database module does not implement all functions"
+					" needed by kazoo module\n");
+			return -1;
+		}
+
+		kz_pa_db = kz_pa_dbf.init(&kz_db_url);
+		if (!kz_pa_db)
+		{
+			LM_ERR("Connection to database failed\n");
+			return -1;
+		}
+
+	}
+
 
     int total_workers = dbk_consumer_processes + 1;
     kz_pipe_fds = (int*) shm_malloc(sizeof(int) * total_workers * 2 );

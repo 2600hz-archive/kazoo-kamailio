@@ -27,6 +27,143 @@ extern int dbk_dialog_expires;
 extern int dbk_presence_expires;
 extern int dbk_mwi_expires;
 extern int dbk_include_entity;
+extern int dbk_pua_mode;
+
+extern db1_con_t *kz_pa_db;
+extern db_func_t kz_pa_dbf;
+extern str kz_presentity_table;
+
+
+int kz_pua_update_presentity(str* event, str* realm, str* user, str* etag, str* sender, str* body, int expires)
+{
+	db_key_t query_cols[12];
+	db_op_t  query_ops[12];
+	db_val_t query_vals[12];
+	int n_query_cols = 0;
+	int ret = -1;
+	int use_replace = 1;
+
+	query_cols[n_query_cols] = &str_domain_col;
+	query_ops[n_query_cols] = OP_EQ;
+	query_vals[n_query_cols].type = DB1_STR;
+	query_vals[n_query_cols].nul = 0;
+	query_vals[n_query_cols].val.str_val = *realm;
+	n_query_cols++;
+
+	query_cols[n_query_cols] = &str_username_col;
+	query_ops[n_query_cols] = OP_EQ;
+	query_vals[n_query_cols].type = DB1_STR;
+	query_vals[n_query_cols].nul = 0;
+	query_vals[n_query_cols].val.str_val = *user;
+	n_query_cols++;
+
+	query_cols[n_query_cols] = &str_event_col;
+	query_ops[n_query_cols] = OP_EQ;
+	query_vals[n_query_cols].type = DB1_STR;
+	query_vals[n_query_cols].nul = 0;
+	query_vals[n_query_cols].val.str_val = *event;
+	n_query_cols++;
+
+	query_cols[n_query_cols] = &str_etag_col;
+	query_ops[n_query_cols] = OP_EQ;
+	query_vals[n_query_cols].type = DB1_STR;
+	query_vals[n_query_cols].nul = 0;
+	query_vals[n_query_cols].val.str_val = *etag;
+	n_query_cols++;
+
+	query_cols[n_query_cols] = &str_sender_col;
+	query_vals[n_query_cols].type = DB1_STR;
+	query_vals[n_query_cols].nul = 0;
+	query_vals[n_query_cols].val.str_val = *sender;
+	n_query_cols++;
+
+	query_cols[n_query_cols] = &str_body_col;
+	query_vals[n_query_cols].type = DB1_BLOB;
+	query_vals[n_query_cols].nul = 0;
+	query_vals[n_query_cols].val.str_val = *body;
+	n_query_cols++;
+
+	query_cols[n_query_cols] = &str_received_time_col;
+	query_vals[n_query_cols].type = DB1_INT;
+	query_vals[n_query_cols].nul = 0;
+	query_vals[n_query_cols].val.int_val = (int)time(NULL);
+	n_query_cols++;
+
+	query_cols[n_query_cols] = &str_expires_col;
+	query_vals[n_query_cols].type = DB1_INT;
+	query_vals[n_query_cols].nul = 0;
+	query_vals[n_query_cols].val.int_val = expires+(int)time(NULL);
+	n_query_cols++;
+
+	if (kz_pa_dbf.use_table(kz_pa_db, &kz_presentity_table) < 0)
+	{
+		LM_ERR("unsuccessful use_table\n");
+		goto error;
+	}
+
+	if (kz_pa_dbf.replace == NULL)
+	{
+		use_replace = 0;
+		LM_DBG("using delete/insert instead of replace\n");
+	}
+
+	if (kz_pa_dbf.start_transaction)
+	{
+		if (kz_pa_dbf.start_transaction(kz_pa_db, DB_LOCKING_WRITE) < 0)
+		{
+			LM_ERR("in start_transaction\n");
+			goto error;
+		}
+	}
+
+	if(use_replace) {
+		if (kz_pa_dbf.replace(kz_pa_db, query_cols, query_vals, n_query_cols, 4, 0) < 0)
+		{
+			LM_ERR("replacing record in database\n");
+			if (kz_pa_dbf.abort_transaction)
+			{
+				if (kz_pa_dbf.abort_transaction(kz_pa_db) < 0)
+					LM_ERR("in abort_transaction\n");
+			}
+			goto error;
+		}
+	} else {
+		if (kz_pa_dbf.delete(kz_pa_db, query_cols, query_ops, query_vals, 4) < 0)
+		{
+			LM_ERR("deleting record in database\n");
+			if (kz_pa_dbf.abort_transaction)
+			{
+				if (kz_pa_dbf.abort_transaction(kz_pa_db) < 0)
+					LM_ERR("in abort_transaction\n");
+			}
+			goto error;
+		}
+		if (kz_pa_dbf.insert(kz_pa_db, query_cols, query_vals, n_query_cols) < 0)
+		{
+			LM_ERR("replacing record in database\n");
+			if (kz_pa_dbf.abort_transaction)
+			{
+				if (kz_pa_dbf.abort_transaction(kz_pa_db) < 0)
+					LM_ERR("in abort_transaction\n");
+			}
+			goto error;
+		}
+	}
+
+	if (kz_pa_dbf.end_transaction)
+	{
+		if (kz_pa_dbf.end_transaction(kz_pa_db) < 0)
+		{
+			LM_ERR("in end_transaction\n");
+			goto error;
+		}
+	}
+
+error:
+
+	return ret;
+}
+
 
 
 int kz_pua_publish_presence(struct json_object *json_obj) {
@@ -367,7 +504,6 @@ int kz_pua_publish_dialoginfo(struct json_object *json_obj) {
 
 }
 
-
 int kz_pua_publish_presence_to_presentity(struct json_object *json_obj) {
     int ret = 1;
     str from = { 0, 0 }, to = { 0, 0 };
@@ -434,7 +570,11 @@ int kz_pua_publish_presence_to_presentity(struct json_object *json_obj) {
     presence_body.s = body;
     presence_body.len = strlen(body);
 
-    dbk_presentity_new_ex(&event, &from_realm, &from_user, &callid, &from, &presence_body, expires);
+    if(dbk_pua_mode == 0) {
+    	dbk_presentity_new_ex(&event, &from_realm, &from_user, &callid, &from, &presence_body, expires);
+    } if(dbk_pua_mode == 1) {
+    	kz_pua_update_presentity(&event, &from_realm, &from_user, &callid, &from, &presence_body, expires);
+    }
 
  error:
 
@@ -496,8 +636,11 @@ int kz_pua_publish_mwi_to_presentity(struct json_object *json_obj) {
     mwi_body.s = body;
     mwi_body.len = strlen(body);
 
-
-    dbk_presentity_new_ex(&event, &from_realm, &from_user, &callid, &from, &mwi_body, expires);
+    if(dbk_pua_mode == 0) {
+    	dbk_presentity_new_ex(&event, &from_realm, &from_user, &callid, &from, &mwi_body, expires);
+    } if(dbk_pua_mode == 1) {
+    	kz_pua_update_presentity(&event, &from_realm, &from_user, &callid, &from, &mwi_body, expires);
+    }
 
  error:
 
@@ -594,7 +737,11 @@ int kz_pua_publish_dialoginfo_to_presentity(struct json_object *json_obj) {
     dialoginfo_body.s = body;
     dialoginfo_body.len = strlen(body);
 
-    dbk_presentity_new_ex(&event, &from_realm, &from_user, &callid, &sender, &dialoginfo_body, expires);
+    if(dbk_pua_mode == 0) {
+    	dbk_presentity_new_ex(&event, &from_realm, &from_user, &callid, &sender, &dialoginfo_body, expires);
+    } if(dbk_pua_mode == 1) {
+    	kz_pua_update_presentity(&event, &from_realm, &from_user, &callid, &sender, &dialoginfo_body, expires);
+    }
 
  error:
 
