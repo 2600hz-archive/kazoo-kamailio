@@ -44,6 +44,9 @@ struct mi_root * mi_dbk_presentity_dump(struct mi_root *cmd_tree, void *param);
 struct mi_root * mi_dbk_presentity_flush(struct mi_root *cmd_tree, void *param);
 int dbk_presentity_flush(int flush_all, str *event, str * domain, str * user);
 
-int w_mi_dbk_presentity_flush(struct sip_msg* msg);
+int w_mi_dbk_presentity_flush0(struct sip_msg* msg);
+int w_mi_dbk_presentity_flush1(struct sip_msg* msg, char* option);
+int w_mi_dbk_presentity_flush2(struct sip_msg* msg, char* option, char* domain);
+int w_mi_dbk_presentity_flush3(struct sip_msg* msg, char* option, char* domain, char* user);
 
 #endif

@@ -290,9 +290,11 @@ int dbk_presentity_flush(int flush_all, str *event, str * domain, str * user) {
 			lock_get(&dbk_presentity_phtable[i].lock);
 			if(dbk_presentity_phtable[i].pu != NULL) {
 				pu = dbk_presentity_phtable[i].pu;
-				if( (!strncmp(pu->event.s, event->s, pu->event.len )) &&
-						((!strcnmp(pu->domain.s, domain->s, pu->domain.len)) || domain->len == 0) &&
-						((!strcnmp(pu->username.s, user->s, pu->username.len)) || user->len == 0)
+				if( ((!strncmp(pu->event.s, event->s, pu->event.len ))
+						|| (!strncmp(event->s, "all", event->len ))
+						|| event->len == 0) &&
+						((!strncmp(pu->domain.s, domain->s, pu->domain.len)) || domain->len == 0) &&
+						((!strncmp(pu->username.s, user->s, pu->username.len)) || user->len == 0)
 						) {
 					while(pu != NULL) {
 						next = pu;
@@ -309,10 +311,45 @@ int dbk_presentity_flush(int flush_all, str *event, str * domain, str * user) {
 }
 
 
-
-int w_mi_dbk_presentity_flush(struct sip_msg* msg)
+int w_mi_dbk_presentity_flush0(struct sip_msg* msg)
 {
 	if (dbk_presentity_flush(1, NULL, NULL, NULL) < 0) {
+		LM_ERR("Presence htable flushing failed\n");
+		return -1;
+	}
+	return 1;
+}
+
+int w_mi_dbk_presentity_flush1(struct sip_msg* msg, char* in_event)
+{
+	str event = str_init(in_event);
+	str domain = {0,0};
+	str user={0,0};
+	if (dbk_presentity_flush(0, &event, &domain, &user) < 0) {
+		LM_ERR("Presence htable flushing failed\n");
+		return -1;
+	}
+	return 1;
+}
+
+int w_mi_dbk_presentity_flush2(struct sip_msg* msg, char* in_event, char* in_domain)
+{
+	str event = str_init(in_event);
+	str domain = str_init(in_domain);
+	str user={0,0};
+	if (dbk_presentity_flush(0, &event, &domain, &user) < 0) {
+		LM_ERR("Presence htable flushing failed\n");
+		return -1;
+	}
+	return 1;
+}
+
+int w_mi_dbk_presentity_flush3(struct sip_msg* msg, char* in_event, char* in_domain, char* in_user)
+{
+	str event = str_init(in_event);
+	str domain = str_init(in_domain);
+	str user = str_init(in_user);
+	if (dbk_presentity_flush(0, &event, &domain, &user) < 0) {
 		LM_ERR("Presence htable flushing failed\n");
 		return -1;
 	}
