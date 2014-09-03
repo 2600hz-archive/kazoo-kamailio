@@ -78,6 +78,10 @@ typedef struct {
 	amqp_bytes_t exchange_type;
 	amqp_bytes_t routing_key;
 	amqp_bytes_t queue;
+	amqp_boolean_t passive;
+	amqp_boolean_t durable;
+	amqp_boolean_t exclusive;
+	amqp_boolean_t auto_delete;
 } kz_amqp_bind, *kz_amqp_bind_ptr;
 
 typedef struct {
@@ -106,7 +110,8 @@ int kz_amqp_add_connection(modparam_t type, void* val);
 int kz_amqp_publish(struct sip_msg* msg, char* exchange, char* routing_key, char* payload);
 int kz_amqp_query(struct sip_msg* msg, char* exchange, char* routing_key, char* payload, char* dst);
 int kz_amqp_query_ex(struct sip_msg* msg, char* exchange, char* routing_key, char* payload);
-int kz_amqp_subscribe(struct sip_msg* msg, char* exchange, char* exchange_type, char* queue_name, char* routing_key);
+int kz_amqp_subscribe(struct sip_msg* msg, char* payload);
+int kz_amqp_subscribe_simple(struct sip_msg* msg, char* exchange, char* exchange_type, char* queue_name, char* routing_key);
 int kz_amqp_encode(struct sip_msg* msg, char* unencoded, char* encoded);
 int kz_amqp_encode_ex(str* unencoded, pv_value_p dst_val);
 //void kz_amqp_presence_consumer_loop(int child_no);

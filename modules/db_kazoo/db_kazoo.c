@@ -130,7 +130,8 @@ static cmd_export_t cmds[] = {
     {"kazoo_subscribe", (cmd_function) kz_amqp_subscribe_2, 2, fixup_kz_amqp4, fixup_kz_amqp4_free, ANY_ROUTE},
     {"kazoo_subscribe", (cmd_function) kz_amqp_subscribe_3, 3, fixup_kz_amqp4, fixup_kz_amqp4_free, ANY_ROUTE},
 */
-    {"kazoo_subscribe", (cmd_function) kz_amqp_subscribe, 4, fixup_kz_amqp4, fixup_kz_amqp4_free, ANY_ROUTE},
+    {"kazoo_subscribe", (cmd_function) kz_amqp_subscribe, 1, 0, 0, ANY_ROUTE},
+    {"kazoo_subscribe", (cmd_function) kz_amqp_subscribe_simple, 4, fixup_kz_amqp4, fixup_kz_amqp4_free, ANY_ROUTE},
 
 
     {"kazoo_json", (cmd_function) kz_json_get_field, 3, fixup_kz_json, fixup_kz_json_free, ANY_ROUTE},
@@ -437,7 +438,7 @@ void db_kazoo_close(db1_con_t * _h) {
 int db_kazoo_use_table(db1_con_t * _h, const str * _t) {
 	LM_DBG("USE TABLE %.*s\n", _t->len, _t->s);
 	if(_h == NULL && !strncmp(_t->s, "presentity", 10)) {
-		LM_DBG("OUCH!!");
+		LM_INFO("OUCH!!");
 		return db_use_table(shared_db1, _t);
 	}
 	else {

@@ -768,7 +768,7 @@ int kz_amqp_query(struct sip_msg* msg, char* exchange, char* routing_key, char* 
 		return 1;
 };
 
-int kz_amqp_subscribe(struct sip_msg* msg, char* exchange, char* exchange_type, char* queue, char* routing_key)
+int kz_amqp_subscribe_simple(struct sip_msg* msg, char* exchange, char* exchange_type, char* queue, char* routing_key)
 {
 	str exchange_s;
 	str exchange_type_s;
@@ -822,6 +822,103 @@ int kz_amqp_subscribe(struct sip_msg* msg, char* exchange, char* exchange_type, 
 error:
     if(binding != NULL)
     	shm_free(binding);
+
+	return -1;
+
+}
+
+int kz_amqp_subscribe(struct sip_msg* msg, char* payload)
+{
+	str exchange_s;
+	str exchange_type_s;
+	str queue_s;
+	str routing_key_s;
+	str payload_s;
+	int passive = 0;
+	int durable = 0;
+	int exclusive = 0;
+	int auto_delete = 1;
+
+    json_obj_ptr json_obj = NULL;
+	struct json_object* tmpObj = NULL;
+
+	if (fixup_get_svalue(msg, (gparam_p)payload, &payload_s) != 0) {
+		LM_ERR("cannot get payload value\n");
+		return -1;
+	}
+
+    json_obj = json_tokener_parse(payload_s.s);
+    if (is_error(json_obj))
+    {
+		LM_ERR("Error parsing json: %s\n",json_tokener_errors[-(unsigned long)json_obj]);
+		LM_ERR("%s\n", payload_s.s);
+		return -1;
+    }
+
+    json_extract_field("exchange", exchange_s);
+    json_extract_field("type", exchange_type_s);
+    json_extract_field("queue", queue_s);
+    json_extract_field("routing", routing_key_s);
+
+    tmpObj = json_object_object_get(json_obj, "passive");
+    if(tmpObj != NULL) {
+    	passive = json_object_get_int(tmpObj);
+    }
+
+    tmpObj = json_object_object_get(json_obj, "durable");
+    if(tmpObj != NULL) {
+    	durable = json_object_get_int(tmpObj);
+    }
+
+    tmpObj = json_object_object_get(json_obj, "exclusive");
+    if(tmpObj != NULL) {
+    	exclusive = json_object_get_int(tmpObj);
+    }
+
+    tmpObj = json_object_object_get(json_obj, "auto_delete");
+    if(tmpObj != NULL) {
+    	auto_delete = json_object_get_int(tmpObj);
+    }
+
+	kz_amqp_bind_ptr bind = kz_amqp_bind_alloc(&exchange_s, &exchange_type_s, &queue_s, &routing_key_s);
+	if(bind == NULL) {
+		LM_ERR("Could not allocate bind struct\n");
+		goto error;
+	}
+
+	bind->durable = durable;
+	bind->passive = passive;
+	bind->exclusive = exclusive;
+	bind->auto_delete = auto_delete;
+
+
+	kz_amqp_binding_ptr binding = shm_malloc(sizeof(kz_amqp_binding));
+	if(binding == NULL) {
+		LM_ERR("Could not allocate binding struct\n");
+		goto error;
+	}
+	memset(binding, 0, sizeof(kz_amqp_binding));
+
+	if(kz_bindings->head == NULL)
+		kz_bindings->head = binding;
+
+	if(kz_bindings->tail != NULL)
+		kz_bindings->tail->next = binding;
+
+	kz_bindings->tail = binding;
+	binding->bind = bind;
+
+    if(json_obj != NULL)
+       	json_object_put(json_obj);
+
+    return 1;
+
+error:
+    if(binding != NULL)
+    	shm_free(binding);
+
+    if(json_obj != NULL)
+       	json_object_put(json_obj);
 
 	return -1;
 
@@ -1034,7 +1131,7 @@ int kz_amqp_bind_consumer(kz_amqp_conn_ptr kz_conn, kz_amqp_bind_ptr bind)
 
     int	idx = get_channel_index();
 
-    amqp_queue_declare(kz_conn->conn, channels[idx].channel, bind->queue, 0, 0, 0, 1, amqp_empty_table);
+    amqp_queue_declare(kz_conn->conn, channels[idx].channel, bind->queue, bind->passive, bind->durable, bind->exclusive, bind->auto_delete, amqp_empty_table);
     if (rmq_error("Declaring queue", amqp_get_rpc_reply(kz_conn->conn)))
     {
 		ret = -RET_AMQP_ERROR;
