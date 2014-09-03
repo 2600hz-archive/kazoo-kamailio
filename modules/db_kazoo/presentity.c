@@ -283,9 +283,6 @@ int dbk_presentity_flush(int flush_all, str *event, str * domain, str * user) {
 			lock_release(&dbk_presentity_phtable[i].lock);
 		}
 	} else {
-		int hash_code;
-		dbk_presentity_t *pu_prev = NULL;
-
 		for(i=0; i < dbk_presentity_phtable_size; i++) {
 			lock_get(&dbk_presentity_phtable[i].lock);
 			if(dbk_presentity_phtable[i].pu != NULL) {
