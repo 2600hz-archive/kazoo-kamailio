@@ -80,12 +80,15 @@ int dbk_consumer_processes = DBK_DEFAULT_NO_CONSUMERS;
 struct timeval kz_sock_tv = (struct timeval){0,100000};
 struct timeval kz_amqp_tv = (struct timeval){0,100000};
 struct timeval kz_qtimeout_tv = (struct timeval){2,0};
+struct timeval kz_ack_tv = (struct timeval){0,100000};
+
 
 str dbk_consumer_event_key = str_init("Event-Category");
 str dbk_consumer_event_subkey = str_init("Event-Name");
 
 int dbk_internal_loop_count = 5;
 int dbk_consumer_loop_count = 10;
+int dbk_consumer_ack_loop_count = 20;
 int dbk_include_entity = 0;
 int dbk_pua_mode = 0;
 
@@ -161,6 +164,8 @@ static param_export_t params[] = {
     {"create_empty_dialog", INT_PARAM, &dbk_create_empty_dialog},
     {"amqp_connection", STR_PARAM|USE_FUNC_PARAM,(void*)kz_amqp_add_connection},
     {"amqp_max_channels", INT_PARAM, &dbk_channels},
+    {"amqp_consumer_ack_timeout_micro", INT_PARAM, &kz_ack_tv.tv_usec},
+    {"amqp_consumer_ack_timeout_sec", INT_PARAM, &kz_ack_tv.tv_sec},
     {"amqp_interprocess_timeout_micro", INT_PARAM, &kz_sock_tv.tv_usec},
     {"amqp_interprocess_timeout_sec", INT_PARAM, &kz_sock_tv.tv_sec},
     {"amqp_waitframe_timout_micro", INT_PARAM, &kz_amqp_tv.tv_usec},
@@ -172,6 +177,7 @@ static param_export_t params[] = {
     {"amqp_query_timout_sec", INT_PARAM, &kz_qtimeout_tv.tv_sec},
     {"amqp_internal_loop_count", INT_PARAM, &dbk_internal_loop_count},
     {"amqp_consumer_loop_count", INT_PARAM, &dbk_consumer_loop_count},
+    {"amqp_consumer_ack_loop_count", INT_PARAM, &dbk_consumer_ack_loop_count},
     {"pua_include_entity", INT_PARAM, &dbk_include_entity},
     {"presentity_table", STR_PARAM, &kz_presentity_table.s},
 	{"db_url", STR_PARAM, &kz_db_url.s},

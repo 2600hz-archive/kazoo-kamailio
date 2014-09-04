@@ -32,9 +32,12 @@ extern int *kz_pipe_fds;
 extern struct timeval kz_sock_tv;
 extern struct timeval kz_amqp_tv;
 extern struct timeval kz_qtimeout_tv;
+extern struct timeval kz_ack_tv;
 
 extern int dbk_internal_loop_count;
 extern int dbk_consumer_loop_count;
+extern dbk_consumer_ack_loop_count;
+
 
 extern int dbk_single_consumer_on_reconnect;
 extern int dbk_consume_messages_on_reconnect;
@@ -1476,9 +1479,10 @@ void kz_amqp_manager_loop(int child_no)
     fd_set fdset;
     int i, idx;
     int selret;
-	int INTERNAL_READ, CONSUME, OK;
+	int INTERNAL_READ, CONSUME, ACK_READ,  OK;
 	int INTERNAL_READ_COUNT , INTERNAL_READ_MAX_LOOP;
 	int CONSUMER_READ_COUNT , CONSUMER_READ_MAX_LOOP;
+	int ACK_READ_COUNT , ACK_READ_MAX_LOOP;
 	char* payload;
 	int channel_res;
     kz_amqp_conn_ptr kzconn;
@@ -1491,6 +1495,7 @@ void kz_amqp_manager_loop(int child_no)
 
         INTERNAL_READ_MAX_LOOP = dbk_internal_loop_count;
         CONSUMER_READ_MAX_LOOP = dbk_consumer_loop_count;
+        ACK_READ_MAX_LOOP = dbk_consumer_ack_loop_count;
 
     	OK = 1;
 
@@ -1540,18 +1545,20 @@ void kz_amqp_manager_loop(int child_no)
     	while(OK) {
         	INTERNAL_READ = 1;
     		CONSUME = 1;
-    		INTERNAL_READ_COUNT = 0;
-        	while(INTERNAL_READ && INTERNAL_READ_COUNT < INTERNAL_READ_MAX_LOOP) {
-        		INTERNAL_READ_COUNT++;
+    		ACK_READ = 1;
+
+
+    		ACK_READ_COUNT = 0;
+        	while(ACK_READ && ACK_READ_COUNT < ACK_READ_MAX_LOOP) {
+        		ACK_READ_COUNT++;
 				FD_ZERO(&fdset);
-				FD_SET(data_pipe, &fdset);
 				FD_SET(back_pipe, &fdset);
-				selret = select(FD_SETSIZE, &fdset, NULL, NULL, &kz_sock_tv);
+				selret = select(FD_SETSIZE, &fdset, NULL, NULL, &kz_ack_tv);
 				if (selret < 0) {
 					LM_ERR("select() failed: %s\n", strerror(errno));
 					break;
 				} else if (!selret) {
-					INTERNAL_READ=0;
+					ACK_READ=0;
 				} else {
 					if(FD_ISSET(back_pipe, &fdset)) {
 						if(read(back_pipe, &cmd, sizeof(cmd)) == sizeof(cmd)) {
@@ -1569,6 +1576,20 @@ void kz_amqp_manager_loop(int child_no)
 							}
 						}
 					}
+				}
+        	}
+    		INTERNAL_READ_COUNT = 0;
+        	while(INTERNAL_READ && INTERNAL_READ_COUNT < INTERNAL_READ_MAX_LOOP) {
+        		INTERNAL_READ_COUNT++;
+				FD_ZERO(&fdset);
+				FD_SET(data_pipe, &fdset);
+				selret = select(FD_SETSIZE, &fdset, NULL, NULL, &kz_sock_tv);
+				if (selret < 0) {
+					LM_ERR("select() failed: %s\n", strerror(errno));
+					break;
+				} else if (!selret) {
+					INTERNAL_READ=0;
+				} else {
 					if(FD_ISSET(data_pipe, &fdset)) {
 						if(read(data_pipe, &cmd, sizeof(cmd)) == sizeof(cmd)) {
 							switch (cmd->type) {
@@ -1597,13 +1618,6 @@ void kz_amqp_manager_loop(int child_no)
 								} else {
 									gettimeofday(&channels[idx].timer, NULL);
 								}
-								break;
-							case KZ_AMQP_ACK:
-								if(amqp_basic_ack(kzconn->conn, cmd->channel, cmd->delivery_tag, 0 ) < 0) {
-									LM_ERR("AMQP ERROR TRYING TO ACK A MSG RETURNED FROM CONSUMER\n");
-									OK = CONSUME = 0;
-								}
-								kz_amqp_free_pipe_cmd(cmd);
 								break;
 							default:
 								LM_DBG("unknown pipe cmd %d\n", cmd->type);
