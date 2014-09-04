@@ -32,6 +32,7 @@ int  dbk_presentity_new(const db1_con_t* _h, const db_key_t* db_col, const db_va
 int  dbk_presentity_delete(const db1_con_t * _h, const db_key_t * _k, const db_op_t * _o, const db_val_t * _v, const int _n);
 int  dbk_presentity_update(const db1_con_t * _h, const db_key_t * _k, const db_op_t * _o, const db_val_t * _v, const db_key_t * _uk, const db_val_t * _uv, const int _n, const int _un);
 
+int dbk_presentity_new_ex(str *event, str *domain, str* username, str* etag, str* sender, str* body, int expires);
 
 dbk_presentity_t *dbk_presentity_search(unsigned int hash_code, str *event, str *domain, str * username, dbk_presentity_t ** pu_prev_ret,dbk_presentity_t * prev_pu_addr);
 int dbk_presentity_htable_insert(str *event, str *domain, str *username, str * etag, str * sender,str * body, int received_time, int expires, unsigned int hash_code);
@@ -42,5 +43,10 @@ void dbk_free_presentity(dbk_presentity_t * pu);
 struct mi_root * mi_dbk_presentity_dump(struct mi_root *cmd_tree, void *param);
 struct mi_root * mi_dbk_presentity_flush(struct mi_root *cmd_tree, void *param);
 int dbk_presentity_flush(int flush_all, str *event, str * domain, str * user);
+
+int w_mi_dbk_presentity_flush0(struct sip_msg* msg);
+int w_mi_dbk_presentity_flush1(struct sip_msg* msg, char* option);
+int w_mi_dbk_presentity_flush2(struct sip_msg* msg, char* option, char* domain);
+int w_mi_dbk_presentity_flush3(struct sip_msg* msg, char* option, char* domain, char* user);
 
 #endif

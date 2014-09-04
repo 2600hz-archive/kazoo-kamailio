@@ -405,10 +405,10 @@ static int mod_init(void)
 
 		register_basic_timers(pres_notifier_processes);
 	}
-//#if 0
+#if 0
 	pa_dbf.close(pa_db);
 	pa_db = NULL;
-//#endif
+#endif
 	return 0;
 }
 

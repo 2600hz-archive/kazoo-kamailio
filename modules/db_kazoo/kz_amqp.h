@@ -46,7 +46,8 @@ typedef struct {
 typedef enum {
 	KZ_AMQP_PUBLISH     = 1,
 	KZ_AMQP_CALL    = 2,
-	KZ_AMQP_CONSUME = 3
+	KZ_AMQP_CONSUME = 3,
+	KZ_AMQP_ACK = 4
 } kz_amqp_pipe_cmd_type;
 
 typedef enum {
@@ -70,14 +71,28 @@ typedef struct {
 	char* return_payload;
 	int   return_code;
 	int   consumer;
+	uint64_t delivery_tag;
+	amqp_channel_t channel;
 	struct timeval timeout;
 } kz_amqp_cmd, *kz_amqp_cmd_ptr;
+
+typedef struct {
+	char* payload;
+	uint64_t delivery_tag;
+	amqp_channel_t channel;
+} kz_amqp_consumer_delivery, *kz_amqp_consumer_delivery_ptr;
 
 typedef struct {
 	amqp_bytes_t exchange;
 	amqp_bytes_t exchange_type;
 	amqp_bytes_t routing_key;
 	amqp_bytes_t queue;
+	amqp_boolean_t passive;
+	amqp_boolean_t durable;
+	amqp_boolean_t exclusive;
+	amqp_boolean_t auto_delete;
+	amqp_boolean_t no_ack;
+	amqp_boolean_t wait_for_consumer_ack;
 } kz_amqp_bind, *kz_amqp_bind_ptr;
 
 typedef struct {
@@ -99,12 +114,15 @@ typedef struct {
 	kz_amqp_binding_ptr tail;
 } kz_amqp_bindings, *kz_amqp_bindings_ptr;
 
+void kz_amqp_init();
+void kz_amqp_destroy();
 int kz_amqp_add_connection(modparam_t type, void* val);
 
 int kz_amqp_publish(struct sip_msg* msg, char* exchange, char* routing_key, char* payload);
 int kz_amqp_query(struct sip_msg* msg, char* exchange, char* routing_key, char* payload, char* dst);
 int kz_amqp_query_ex(struct sip_msg* msg, char* exchange, char* routing_key, char* payload);
-int kz_amqp_subscribe(struct sip_msg* msg, char* exchange, char* exchange_type, char* queue_name, char* routing_key);
+int kz_amqp_subscribe(struct sip_msg* msg, char* payload);
+int kz_amqp_subscribe_simple(struct sip_msg* msg, char* exchange, char* exchange_type, char* queue_name, char* routing_key);
 int kz_amqp_encode(struct sip_msg* msg, char* unencoded, char* encoded);
 int kz_amqp_encode_ex(str* unencoded, pv_value_p dst_val);
 //void kz_amqp_presence_consumer_loop(int child_no);
@@ -115,6 +133,6 @@ void kz_amqp_manager_loop(int child_no);
 
 int kz_pv_get_event_payload(struct sip_msg *msg, pv_param_t *param,	pv_value_t *res);
 int kz_pv_get_last_query_result(struct sip_msg *msg, pv_param_t *param,	pv_value_t *res);
-
+int kz_pv_get_connection_host(struct sip_msg *msg, pv_param_t *param,	pv_value_t *res);
 
 #endif /* KZ_AMQP_H_ */
