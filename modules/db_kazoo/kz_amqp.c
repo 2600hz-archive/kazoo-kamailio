@@ -35,7 +35,9 @@ extern struct timeval kz_qtimeout_tv;
 
 extern int dbk_internal_loop_count;
 extern int dbk_consumer_loop_count;
-extern int dbk_sequence_reconnect;
+
+extern int dbk_single_consumer_on_reconnect;
+extern int dbk_consume_messages_on_reconnect;
 
 static char *kz_amqp_str_dup(str *src)
 {
@@ -1427,7 +1429,8 @@ void kz_amqp_manager_loop(int child_no)
     kz_amqp_conn_ptr kzconn;
 	kz_amqp_cmd_ptr cmd;
     int loopcount = 0;
-    int firstLoop = dbk_sequence_reconnect;
+    int firstLoop = dbk_consume_messages_on_reconnect;
+
 
     while(1) {
 
@@ -1478,7 +1481,7 @@ void kz_amqp_manager_loop(int child_no)
     		}
     	}
 
-    	firstLoop = dbk_sequence_reconnect;
+    	firstLoop = dbk_consume_messages_on_reconnect;
     	while(OK) {
         	INTERNAL_READ = 1;
     		CONSUME = 1;
@@ -1570,7 +1573,8 @@ void kz_amqp_manager_loop(int child_no)
 						channels[idx].cmd = NULL;
 						break;
 					case KZ_AMQP_CONSUMING:
-						kz_amqp_send_consumer_event(kz_amqp_bytes_dup(envelope.message.body), !firstLoop);
+						kz_amqp_send_consumer_event(kz_amqp_bytes_dup(envelope.message.body),
+								(firstLoop && dbk_single_consumer_on_reconnect) ? 0 : 1);
 						if(channels[idx].consumer->no_ack == 0) {
 							if(amqp_basic_ack(kzconn->conn, envelope.channel, envelope.delivery_tag, 0 ) < 0) {
 								LM_ERR("AMQP ERROR TRYING TO ACK A MSG\n");
@@ -1596,7 +1600,7 @@ void kz_amqp_manager_loop(int child_no)
     	    }
 
 			/* check timeouts */
-			if(OK) {
+			if(OK && (!firstLoop)) {
 				struct timeval now;
 				gettimeofday(&now, NULL);
 				for(i=0; i < dbk_channels; i++) {
@@ -1613,7 +1617,6 @@ void kz_amqp_manager_loop(int child_no)
 					}
 				}
 			}
-
 			firstLoop = 0;
     	}
     	kz_amqp_connection_close(kzconn);
