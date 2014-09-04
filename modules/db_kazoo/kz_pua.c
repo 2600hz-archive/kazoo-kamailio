@@ -34,7 +34,7 @@ extern db_func_t kz_pa_dbf;
 extern str kz_presentity_table;
 
 
-int kz_pua_update_presentity(str* event, str* realm, str* user, str* etag, str* sender, str* body, int expires)
+int kz_pua_update_presentity(str* event, str* realm, str* user, str* etag, str* sender, str* body, int expires, int reset)
 {
 	db_key_t query_cols[12];
 	db_op_t  query_ops[12];
@@ -42,6 +42,13 @@ int kz_pua_update_presentity(str* event, str* realm, str* user, str* etag, str* 
 	int n_query_cols = 0;
 	int ret = -1;
 	int use_replace = 1;
+
+	query_cols[n_query_cols] = &str_event_col;
+	query_ops[n_query_cols] = OP_EQ;
+	query_vals[n_query_cols].type = DB1_STR;
+	query_vals[n_query_cols].nul = 0;
+	query_vals[n_query_cols].val.str_val = *event;
+	n_query_cols++;
 
 	query_cols[n_query_cols] = &str_domain_col;
 	query_ops[n_query_cols] = OP_EQ;
@@ -55,13 +62,6 @@ int kz_pua_update_presentity(str* event, str* realm, str* user, str* etag, str* 
 	query_vals[n_query_cols].type = DB1_STR;
 	query_vals[n_query_cols].nul = 0;
 	query_vals[n_query_cols].val.str_val = *user;
-	n_query_cols++;
-
-	query_cols[n_query_cols] = &str_event_col;
-	query_ops[n_query_cols] = OP_EQ;
-	query_vals[n_query_cols].type = DB1_STR;
-	query_vals[n_query_cols].nul = 0;
-	query_vals[n_query_cols].val.str_val = *event;
 	n_query_cols++;
 
 	query_cols[n_query_cols] = &str_etag_col;
@@ -101,7 +101,7 @@ int kz_pua_update_presentity(str* event, str* realm, str* user, str* etag, str* 
 		goto error;
 	}
 
-	if (kz_pa_dbf.replace == NULL)
+	if (kz_pa_dbf.replace == NULL || reset > 0)
 	{
 		use_replace = 0;
 		LM_DBG("using delete/insert instead of replace\n");
@@ -128,7 +128,7 @@ int kz_pua_update_presentity(str* event, str* realm, str* user, str* etag, str* 
 			goto error;
 		}
 	} else {
-		if (kz_pa_dbf.delete(kz_pa_db, query_cols, query_ops, query_vals, 4) < 0)
+		if (kz_pa_dbf.delete(kz_pa_db, query_cols, query_ops, query_vals, 4-reset) < 0)
 		{
 			LM_ERR("deleting record in database\n");
 			if (kz_pa_dbf.abort_transaction)
@@ -573,7 +573,7 @@ int kz_pua_publish_presence_to_presentity(struct json_object *json_obj) {
     if(dbk_pua_mode == 0) {
     	dbk_presentity_new_ex(&event, &from_realm, &from_user, &callid, &from, &presence_body, expires);
     } if(dbk_pua_mode == 1) {
-    	kz_pua_update_presentity(&event, &from_realm, &from_user, &callid, &from, &presence_body, expires);
+    	kz_pua_update_presentity(&event, &from_realm, &from_user, &callid, &from, &presence_body, expires, 1);
     }
 
  error:
@@ -639,7 +639,7 @@ int kz_pua_publish_mwi_to_presentity(struct json_object *json_obj) {
     if(dbk_pua_mode == 0) {
     	dbk_presentity_new_ex(&event, &from_realm, &from_user, &callid, &from, &mwi_body, expires);
     } if(dbk_pua_mode == 1) {
-    	kz_pua_update_presentity(&event, &from_realm, &from_user, &callid, &from, &mwi_body, expires);
+    	kz_pua_update_presentity(&event, &from_realm, &from_user, &callid, &from, &mwi_body, expires, 1);
     }
 
  error:
@@ -664,6 +664,7 @@ int kz_pua_publish_dialoginfo_to_presentity(struct json_object *json_obj) {
     str dialoginfo_body = {0 , 0};
     int expires = dbk_dialog_expires;
     str event = str_init("dialog");
+    int reset = 0;
 
     char *body = (char *)pkg_malloc(DIALOGINFO_BODY_BUFFER_SIZE);
     if(body == NULL) {
@@ -688,6 +689,11 @@ int kz_pua_publish_dialoginfo_to_presentity(struct json_object *json_obj) {
     struct json_object* ExpiresObj = json_object_object_get(json_obj, BLF_JSON_EXPIRES);
     if(ExpiresObj != NULL) {
     	expires = json_object_get_int(ExpiresObj);
+    }
+
+    ExpiresObj = json_object_object_get(json_obj, "Flush-Level");
+    if(ExpiresObj != NULL) {
+    	reset = json_object_get_int(ExpiresObj);
     }
 
     if (!from_user.len || !to_user.len || !state.len) {
@@ -740,7 +746,7 @@ int kz_pua_publish_dialoginfo_to_presentity(struct json_object *json_obj) {
     if(dbk_pua_mode == 0) {
     	dbk_presentity_new_ex(&event, &from_realm, &from_user, &callid, &sender, &dialoginfo_body, expires);
     } if(dbk_pua_mode == 1) {
-    	kz_pua_update_presentity(&event, &from_realm, &from_user, &callid, &sender, &dialoginfo_body, expires);
+    	kz_pua_update_presentity(&event, &from_realm, &from_user, &callid, &sender, &dialoginfo_body, expires, reset);
     }
 
  error:
