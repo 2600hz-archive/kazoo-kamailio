@@ -1499,7 +1499,7 @@ int dbk_presence_query(const db1_con_t * _h, const db_key_t * _k,
 	for (col = 0; col < _nc; col++) {
 	    LM_DBG("Col[%d]: %.*s\n", col, _c[col]->len, _c[col]->s);
 
-	    RES_ROWS(db_res)[0].values[col].type = DB1_STR;
+	    RES_ROWS(db_res)[i].values[col].type = DB1_STR;
 
 	    if (strncmp(_c[col]->s, "body", _c[col]->len) == 0) {
 		RES_ROWS(db_res)[i].values[col].val.str_val = body[i];
