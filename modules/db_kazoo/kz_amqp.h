@@ -82,6 +82,7 @@ typedef struct {
 	amqp_boolean_t durable;
 	amqp_boolean_t exclusive;
 	amqp_boolean_t auto_delete;
+	amqp_boolean_t no_ack;
 } kz_amqp_bind, *kz_amqp_bind_ptr;
 
 typedef struct {

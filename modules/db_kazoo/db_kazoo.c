@@ -88,6 +88,7 @@ int dbk_internal_loop_count = 5;
 int dbk_consumer_loop_count = 10;
 int dbk_include_entity = 0;
 int dbk_pua_mode = 0;
+int dbk_sequence_reconnect = 1;
 
 struct tm_binds tmb;
 pua_api_t kz_pua_api;
@@ -172,6 +173,7 @@ static param_export_t params[] = {
     {"presentity_table", STR_PARAM, &kz_presentity_table.s},
 	{ "db_url",                 STR_PARAM, &kz_db_url.s},
     {"pua_mode", INT_PARAM, &dbk_pua_mode},
+    {"sequence_consumer_on_connect", INT_PARAM, &dbk_sequence_reconnect},
 
     {0, 0, 0}
 };

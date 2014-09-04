@@ -35,6 +35,7 @@ extern struct timeval kz_qtimeout_tv;
 
 extern int dbk_internal_loop_count;
 extern int dbk_consumer_loop_count;
+extern int dbk_sequence_reconnect;
 
 static char *kz_amqp_str_dup(str *src)
 {
@@ -801,6 +802,9 @@ int kz_amqp_subscribe_simple(struct sip_msg* msg, char* exchange, char* exchange
 		goto error;
 	}
 
+	bind->auto_delete = 1;
+	bind->no_ack = 1;
+
 	kz_amqp_binding_ptr binding = shm_malloc(sizeof(kz_amqp_binding));
 	if(binding == NULL) {
 		LM_ERR("Could not allocate binding struct\n");
@@ -838,6 +842,7 @@ int kz_amqp_subscribe(struct sip_msg* msg, char* payload)
 	int durable = 0;
 	int exclusive = 0;
 	int auto_delete = 1;
+	int no_ack = 1;
 
     json_obj_ptr json_obj = NULL;
 	struct json_object* tmpObj = NULL;
@@ -880,6 +885,11 @@ int kz_amqp_subscribe(struct sip_msg* msg, char* payload)
     	auto_delete = json_object_get_int(tmpObj);
     }
 
+    tmpObj = json_object_object_get(json_obj, "no_ack");
+    if(tmpObj != NULL) {
+    	no_ack = json_object_get_int(tmpObj);
+    }
+
 	kz_amqp_bind_ptr bind = kz_amqp_bind_alloc(&exchange_s, &exchange_type_s, &queue_s, &routing_key_s);
 	if(bind == NULL) {
 		LM_ERR("Could not allocate bind struct\n");
@@ -890,6 +900,7 @@ int kz_amqp_subscribe(struct sip_msg* msg, char* payload)
 	bind->passive = passive;
 	bind->exclusive = exclusive;
 	bind->auto_delete = auto_delete;
+	bind->no_ack = no_ack;
 
 
 	kz_amqp_binding_ptr binding = shm_malloc(sizeof(kz_amqp_binding));
@@ -1154,7 +1165,7 @@ int kz_amqp_bind_consumer(kz_amqp_conn_ptr kz_conn, kz_amqp_bind_ptr bind)
     }
 
     LM_DBG("BASIC CONSUME\n");
-    if (amqp_basic_consume(kz_conn->conn, channels[idx].channel, bind->queue, amqp_empty_bytes, 0, 1, 0, amqp_empty_table) < 0
+    if (amqp_basic_consume(kz_conn->conn, channels[idx].channel, bind->queue, amqp_empty_bytes, 0, bind->no_ack, 0, amqp_empty_table) < 0
 	    || rmq_error("Consuming", amqp_get_rpc_reply(kz_conn->conn)))
     {
 		ret = -RET_AMQP_ERROR;
@@ -1376,14 +1387,16 @@ int check_timeout(struct timeval *now, struct timeval *start, struct timeval *ti
 
 int consumer = 1;
 
-void kz_amqp_send_consumer_event(char* payload)
+void kz_amqp_send_consumer_event(char* payload, int nextConsumer)
 {
 	if (write(kz_pipe_fds[consumer*2+1], &payload, sizeof(payload)) != sizeof(payload)) {
 		LM_ERR("failed to send payload to consumer %d : %s\nPayload %s\n", consumer, strerror(errno), payload);
 	};
-	consumer++;
-	if(consumer > dbk_consumer_processes) {
-		consumer = 1;
+	if(nextConsumer) {
+		consumer++;
+		if(consumer > dbk_consumer_processes) {
+			consumer = 1;
+		}
 	}
 }
 
@@ -1395,7 +1408,7 @@ void kz_amqp_fire_connection_event(char *event, char* host)
 			dbk_consumer_event_subkey.len, dbk_consumer_event_subkey.s,
 			event, host
 			);
-	kz_amqp_send_consumer_event(payload);
+	kz_amqp_send_consumer_event(payload, 1);
 }
 
 void kz_amqp_manager_loop(int child_no)
@@ -1414,6 +1427,7 @@ void kz_amqp_manager_loop(int child_no)
     kz_amqp_conn_ptr kzconn;
 	kz_amqp_cmd_ptr cmd;
     int loopcount = 0;
+    int firstLoop = dbk_sequence_reconnect;
 
     while(1) {
 
@@ -1464,6 +1478,7 @@ void kz_amqp_manager_loop(int child_no)
     		}
     	}
 
+    	firstLoop = dbk_sequence_reconnect;
     	while(OK) {
         	INTERNAL_READ = 1;
     		CONSUME = 1;
@@ -1518,7 +1533,7 @@ void kz_amqp_manager_loop(int child_no)
         	}
 
     		CONSUMER_READ_COUNT = 0;
-    	    while(CONSUME && CONSUMER_READ_COUNT < CONSUMER_READ_MAX_LOOP) {
+    	    while(CONSUME && (CONSUMER_READ_COUNT < CONSUMER_READ_MAX_LOOP || firstLoop)) {
         		payload = NULL;
         		CONSUMER_READ_COUNT++;
 				amqp_envelope_t envelope;
@@ -1555,7 +1570,13 @@ void kz_amqp_manager_loop(int child_no)
 						channels[idx].cmd = NULL;
 						break;
 					case KZ_AMQP_CONSUMING:
-						kz_amqp_send_consumer_event(kz_amqp_bytes_dup(envelope.message.body));
+						kz_amqp_send_consumer_event(kz_amqp_bytes_dup(envelope.message.body), !firstLoop);
+						if(channels[idx].consumer->no_ack == 0) {
+							if(amqp_basic_ack(kzconn->conn, envelope.channel, envelope.delivery_tag, 0 ) < 0) {
+								LM_ERR("AMQP ERROR TRYING TO ACK A MSG\n");
+								OK = CONSUME = 0;
+							}
+						}
 						break;
 					default:
 						break;
@@ -1593,6 +1614,7 @@ void kz_amqp_manager_loop(int child_no)
 				}
 			}
 
+			firstLoop = 0;
     	}
     	kz_amqp_connection_close(kzconn);
     	kz_amqp_fire_connection_event("closed", kzconn->info.host);
