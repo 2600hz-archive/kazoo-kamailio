@@ -174,7 +174,7 @@ static param_export_t params[] = {
     {"amqp_consumer_loop_count", INT_PARAM, &dbk_consumer_loop_count},
     {"pua_include_entity", INT_PARAM, &dbk_include_entity},
     {"presentity_table", STR_PARAM, &kz_presentity_table.s},
-	{ "db_url",                 STR_PARAM, &kz_db_url.s},
+	{"db_url", STR_PARAM, &kz_db_url.s},
     {"pua_mode", INT_PARAM, &dbk_pua_mode},
     {"single_consumer_on_reconnect", INT_PARAM, &dbk_single_consumer_on_reconnect},
     {"consume_messages_on_reconnect", INT_PARAM, &dbk_consume_messages_on_reconnect},
@@ -308,9 +308,10 @@ static int mod_init(void) {
 
 
     int total_workers = dbk_consumer_processes + 1;
-    kz_pipe_fds = (int*) shm_malloc(sizeof(int) * total_workers * 2 );
+    int total_pipes = total_workers + 1;
+    kz_pipe_fds = (int*) shm_malloc(sizeof(int) * (total_pipes) * 2 );
 
-    for(i=0; i < total_workers; i++) {
+    for(i=0; i < total_pipes; i++) {
     	kz_pipe_fds[i*2] = kz_pipe_fds[i*2+1] = -1;
 		if (pipe(&kz_pipe_fds[i*2]) < 0) {
 			LM_ERR("pipe(%d) failed\n", i);

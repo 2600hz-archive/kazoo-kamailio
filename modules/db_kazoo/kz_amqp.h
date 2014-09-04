@@ -46,7 +46,8 @@ typedef struct {
 typedef enum {
 	KZ_AMQP_PUBLISH     = 1,
 	KZ_AMQP_CALL    = 2,
-	KZ_AMQP_CONSUME = 3
+	KZ_AMQP_CONSUME = 3,
+	KZ_AMQP_ACK = 4
 } kz_amqp_pipe_cmd_type;
 
 typedef enum {
@@ -70,8 +71,16 @@ typedef struct {
 	char* return_payload;
 	int   return_code;
 	int   consumer;
+	uint64_t delivery_tag;
+	amqp_channel_t channel;
 	struct timeval timeout;
 } kz_amqp_cmd, *kz_amqp_cmd_ptr;
+
+typedef struct {
+	char* payload;
+	uint64_t delivery_tag;
+	amqp_channel_t channel;
+} kz_amqp_consumer_delivery, *kz_amqp_consumer_delivery_ptr;
 
 typedef struct {
 	amqp_bytes_t exchange;
@@ -83,6 +92,7 @@ typedef struct {
 	amqp_boolean_t exclusive;
 	amqp_boolean_t auto_delete;
 	amqp_boolean_t no_ack;
+	amqp_boolean_t wait_for_consumer_ack;
 } kz_amqp_bind, *kz_amqp_bind_ptr;
 
 typedef struct {
