@@ -36,7 +36,7 @@ extern struct timeval kz_ack_tv;
 
 extern int dbk_internal_loop_count;
 extern int dbk_consumer_loop_count;
-extern dbk_consumer_ack_loop_count;
+extern int dbk_consumer_ack_loop_count;
 
 
 extern int dbk_single_consumer_on_reconnect;
@@ -690,14 +690,14 @@ int kz_amqp_publish(struct sip_msg* msg, char* exchange, char* routing_key, char
 		}
 
 		if (fixup_get_svalue(msg, (gparam_p)payload, &json_s) != 0) {
-			LM_ERR("cannot get json string value\n");
+			LM_ERR("cannot get json string value : %s\n", payload);
 			return -1;
 		}
 
 		struct json_object *j = json_tokener_parse(json_s.s);
 
 		if (is_error(j)) {
-			LM_ERR("empty or invalid JSON payload\n");
+			LM_ERR("empty or invalid JSON payload : %.*s\n", json_s.len, json_s.s);
 			return -1;
 		}
 
@@ -738,14 +738,14 @@ int kz_amqp_query_ex(struct sip_msg* msg, char* exchange, char* routing_key, cha
 		}
 
 		if (fixup_get_svalue(msg, (gparam_p)payload, &json_s) != 0) {
-			LM_ERR("cannot get json string value\n");
+			LM_ERR("cannot get json string value : %s\n", payload);
 			return -1;
 		}
 
 		struct json_object *j = json_tokener_parse(json_s.s);
 
 		if (is_error(j)) {
-			LM_ERR("empty or invalid JSON payload\n");
+			LM_ERR("empty or invalid JSON payload : %*.s\n", json_s.len, json_s.s);
 			return -1;
 		}
 
@@ -1707,12 +1707,11 @@ void kz_amqp_manager_loop(int child_no)
 							&& channels[i].cmd != NULL
 							&& check_timeout(&now, &channels[i].timer, &channels[i].cmd->timeout)) {
 						cmd = channels[i].cmd;
+						LM_ERR("KAZOO QUERY TIMEOUT : %s : %s : %s\n", cmd->exchange, cmd->routing_key, cmd->payload);
 						channels[i].state = KZ_AMQP_FREE;
 						channels[i].cmd = NULL;
 						cmd->return_code = -1;
 						lock_release(&cmd->lock);
-						// rebind ??
-						LM_ERR("QUERY TIMEOUT");
 					}
 				}
 			}
