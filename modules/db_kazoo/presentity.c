@@ -13,8 +13,6 @@
 #include "../../sr_module.h"
 #include "../../lib/kmi/mi.h"
 #include "../presence/bind_presence.h"
-#include "../pua_dialoginfo/bind_dialoginfo.h"
-#include "../presence_dialoginfo/bind_pres_dialoginfo.h"
 #include "../../pvar.h"
 
 #include "../pua/pua_bind.h"
