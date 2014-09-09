@@ -310,6 +310,10 @@ static int mod_init(void) {
 			return -1;
 		}
 
+		kz_pa_dbf.close(kz_pa_db);
+		kz_pa_db = NULL;
+
+
 	}
 
 
@@ -351,7 +355,7 @@ static int mod_child_init(int rank)
 	fire_init_event(rank);
 
 	if (rank==PROC_MAIN) {
-		pid=fork_process(PROC_NOCHLDINIT, "AMQP Manager", 1);
+		pid=fork_process(1, "AMQP Manager", 0);
 		if (pid<0)
 			return -1; /* error */
 		if(pid==0){
@@ -359,13 +363,36 @@ static int mod_child_init(int rank)
 		}
 		else {
 			for(i=0; i < dbk_consumer_processes; i++) {
-				pid=fork_process(PROC_NOCHLDINIT, "AMQP Consumer", 1);
+				pid=fork_process(i+2, "AMQP Consumer", 0);
 				if (pid<0)
 					return -1; /* error */
 				if(pid==0){
 					mod_consumer_proc(i+1);
 				}
 			}
+		}
+	}
+
+	if(rank > 1 && rank < dbk_consumer_processes+2 ) {
+		if(dbk_pua_mode == 1) {
+			if (kz_pa_dbf.init==0)
+			{
+				LM_CRIT("child_init: database not bound\n");
+				return -1;
+			}
+			kz_pa_db = kz_pa_dbf.init(&kz_db_url);
+			if (!kz_pa_db)
+			{
+				LM_ERR("child %d: unsuccessful connecting to database\n", rank);
+				return -1;
+			}
+
+			if (kz_pa_dbf.use_table(kz_pa_db, &kz_presentity_table) < 0)
+			{
+				LM_ERR( "child %d:unsuccessful use_table presentity_table\n", rank);
+				return -1;
+			}
+			LM_DBG("child %d: Database connection opened successfully\n", rank);
 		}
 	}
 
