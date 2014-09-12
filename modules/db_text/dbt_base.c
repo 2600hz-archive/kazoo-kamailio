@@ -19,7 +19,7 @@
  *
  * You should have received a copy of the GNU General Public License 
  * along with this program; if not, write to the Free Software 
- * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
  * 
  * History:
  * --------
@@ -281,9 +281,9 @@ int dbt_query(db1_con_t* _h, db_key_t* _k, db_op_t* _op, db_val_t* _v,
  	if(_o_l)
  		pkg_free(_o_l);
 
- 	result = dbt_get_result(_r, _dres);
- 	if(result != 0)
- 		dbt_result_free(_dres);
+	result = dbt_get_result(_r, _dres);
+	if(result != 0)
+		dbt_result_free(_dres);
 
 	return result;
 
