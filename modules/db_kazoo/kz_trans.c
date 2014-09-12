@@ -54,7 +54,7 @@
 
 /*! transformation buffer size */
 #define KZ_TR_BUFFER_SIZE 65536
-#define KZ_TR_BUFFER_SLOTS	4
+#define KZ_TR_BUFFER_SLOTS	8
 
 /*! transformation buffer */
 static char **_kz_tr_buffer_list = NULL;
@@ -114,16 +114,45 @@ int kz_tr_eval(struct sip_msg *msg, tr_param_t *tp, int subtype, pv_value_t *val
 	if(val==NULL || (val->flags&PV_VAL_NULL))
 		return -1;
 
+	char* tofree = NULL;
+	int oldflags = 0;
+
+	kz_tr_set_crt_buffer();
+
 	switch(subtype)
 	{
 		case TR_KAZOO_ENCODE:
 			if(!(val->flags&PV_VAL_STR))
-				val->rs.s = int2str(val->ri, &val->rs.len);
+				return -1;
+
+			oldflags = val->flags;
+			tofree = val->rs.s;
 
 			if( kz_amqp_encode_ex(&val->rs, val ) != 1) {
 				LM_ERR("error encoding value\n");
 				return -1;
 			}
+
+			// it seems that val memory is not freed
+			// event with flag set to PV_VAL_PKG
+
+			strncpy(_kz_tr_buffer, val->rs.s, val->rs.len);
+			if(val->flags & PV_VAL_PKG)
+				pkg_free(val->rs.s);
+			else if(val->flags & PV_VAL_SHM)
+				shm_free(val->rs.s);
+			_kz_tr_buffer[val->rs.len] = '\0';
+			val->flags = PV_VAL_STR;
+			val->ri = 0;
+			val->rs.s = _kz_tr_buffer;
+
+			if(oldflags & PV_VAL_PKG) {
+				pkg_free(tofree);
+			} else if(oldflags & PV_VAL_SHM) {
+				shm_free(tofree);
+			}
+
+
 			break;
 		case TR_KAZOO_JSON:
 			if(tp==NULL)
@@ -132,10 +161,32 @@ int kz_tr_eval(struct sip_msg *msg, tr_param_t *tp, int subtype, pv_value_t *val
 				return -1;
 			}
 
+			oldflags = val->flags;
+			tofree = val->rs.s;
+
 			if(kz_json_get_field_ex(&val->rs, &tp->v.s, val ) != 1) {
 				LM_ERR("error getting json\n");
 				return -1;
 			}
+			// it seems that val memory is not freed
+			// event with flag set to PV_VAL_PKG
+
+			strncpy(_kz_tr_buffer, val->rs.s, val->rs.len);
+			if(val->flags & PV_VAL_PKG)
+				pkg_free(val->rs.s);
+			else if(val->flags & PV_VAL_SHM)
+				shm_free(val->rs.s);
+			_kz_tr_buffer[val->rs.len] = '\0';
+			val->flags = PV_VAL_STR;
+			val->ri = 0;
+			val->rs.s = _kz_tr_buffer;
+
+			if(oldflags & PV_VAL_PKG) {
+				pkg_free(tofree);
+			} else if(oldflags & PV_VAL_SHM) {
+				shm_free(tofree);
+			}
+
 			break;
 
 		default:

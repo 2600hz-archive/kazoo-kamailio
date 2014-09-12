@@ -41,6 +41,7 @@ char** str_split(char* a_str, const char a_delim)
     char delim[2];
     delim[0] = a_delim;
     delim[1] = 0;
+    int len = 0;
 
     /* Count how many elements will be extracted. */
     while (*tmp)
@@ -60,7 +61,7 @@ char** str_split(char* a_str, const char a_delim)
        knows where the list of returned strings ends. */
     count++;
 
-    result = malloc(sizeof(char*) * count);
+    result = pkg_malloc(sizeof(char*) * count);
 
     if (result)
     {
@@ -70,8 +71,13 @@ char** str_split(char* a_str, const char a_delim)
         while (token)
         {
             assert(idx < count);
-            *(result + idx++) = strdup(token);
+            len = strlen(token);
+            char* ptr = pkg_malloc( (len+1) * sizeof(char));
+            *(result + idx) = ptr;
+        	memcpy(ptr, token, len);
+        	ptr[len] = '\0';
             token = strtok(0, delim);
+            idx++;
         }
         assert(idx == count - 1);
         *(result + idx) = 0;
@@ -88,22 +94,24 @@ int kz_json_get_field_ex(str* json, str* field, pv_value_p dst_val)
   char f1[25], f2[25];//, f3[25];
   int i;
 
-  dup = strndup(json->s, json->len+1);
+  dup = pkg_malloc(json->len+1);
+  memcpy(dup, json->s, json->len);
   dup[json->len] = '\0';
   struct json_object *j = json_tokener_parse(dup);
-  free(dup);
+  pkg_free(dup);
 
   if (is_error(j)) {
 	  LM_ERR("empty or invalid JSON\n");
 	  return -1;
   }
 
-	struct json_object *jtree = NULL;
+  struct json_object *jtree = NULL;
 
-	dup = strndup(field->s, field->len+1);
-	dup[field->len] = '\0';
-    tokens = str_split(dup, '.');
-    free(dup);
+  dup = pkg_malloc(field->len+1);
+  memcpy(dup, field->s, field->len);
+  dup[field->len] = '\0';
+  tokens = str_split(dup, '.');
+  pkg_free(dup);
 
     if (tokens)
     {
@@ -130,16 +138,19 @@ int kz_json_get_field_ex(str* json, str* field, pv_value_p dst_val)
 					}
 				}
         	}
-            free(*(tokens + i));
+            pkg_free(*(tokens + i));
         }
-        free(tokens);
+        pkg_free(tokens);
     }
 
 	if(jtree != NULL) {
 		char *value = (char*)json_object_get_string(jtree);
-		dst_val->rs.s = strdup(value);
-		dst_val->rs.len = strlen(value);
-		dst_val->flags = PV_VAL_STR;
+		int len = strlen(value);
+		dst_val->rs.s = pkg_malloc(len+1);
+		memcpy(dst_val->rs.s, value, len);
+		dst_val->rs.s[len] = '\0';
+		dst_val->rs.len = len;
+		dst_val->flags = PV_VAL_STR | PV_VAL_PKG;
 	} else {
 		dst_val->flags = PV_VAL_NULL;
 	}
@@ -173,6 +184,10 @@ int kz_json_get_field(struct sip_msg* msg, char* json, char* field, char* dst)
 
 	dst_pv = (pv_spec_t *)dst;
 	dst_pv->setf(msg, &dst_pv->pvp, (int)EQ_T, &dst_val);
+	if(dst_val.flags & PV_VAL_PKG)
+		pkg_free(dst_val.rs.s);
+	else if(dst_val.flags & PV_VAL_SHM)
+		shm_free(dst_val.rs.s);
 
 	return 1;
 }
