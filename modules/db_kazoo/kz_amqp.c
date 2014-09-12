@@ -819,9 +819,11 @@ int kz_amqp_query_ex(struct sip_msg* msg, char* exchange, char* routing_key, cha
 	  str json_s;
 	  str exchange_s;
 	  str routing_key_s;
-
+	  char* strjson = NULL;
+	  int len = 0;
+	  json_obj_ptr ret = NULL;
 	  if(last_payload_result)
-		pkg_free(last_payload_result);
+		  pkg_free(last_payload_result);
 
 	  last_payload_result = NULL;
 
@@ -849,15 +851,14 @@ int kz_amqp_query_ex(struct sip_msg* msg, char* exchange, char* routing_key, cha
 
 		json_object_put(j);
 
-		json_obj_ptr ret = NULL;
 		int res = kz_amqp_pipe_send_receive(&exchange_s, &routing_key_s, &json_s, &ret );
 
 		if(res != 0) {
 			return -1;
 		}
 
-		char* strjson = json_object_to_json_string(ret);
-		int len = strlen(strjson);
+		strjson = (char*)json_object_to_json_string(ret);
+		len = strlen(strjson);
 		char* value = pkg_malloc(len+1);
 		memcpy(value, strjson, len);
 		value[len] = '\0';
@@ -1551,7 +1552,6 @@ int consumer = 1;
 
 void kz_amqp_send_consumer_event_ex(char* payload, char* event_key, char* event_subkey, amqp_channel_t channel, uint64_t delivery_tag, int nextConsumer)
 {
-	int len = 0;
 	kz_amqp_consumer_delivery_ptr ptr = (kz_amqp_consumer_delivery_ptr) shm_malloc(sizeof(kz_amqp_consumer_delivery));
 	if(ptr == NULL) {
 		LM_ERR("NO MORE SHARED MEMORY!");
