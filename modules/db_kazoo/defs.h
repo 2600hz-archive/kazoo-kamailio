@@ -9,12 +9,17 @@
 #define DBK_DEFS_H_
 
 #define BLF_MAX_DIALOGS 8
+#define BLF_JSON_PRES		"Presentity"
+#define BLF_JSON_PRES_USER	"Presentity-User"
+#define BLF_JSON_PRES_REALM	"Presentity-Realm"
 #define BLF_JSON_FROM      	"From"
 #define BLF_JSON_FROM_USER 	"From-User"
 #define BLF_JSON_FROM_REALM	"From-Realm"
+#define BLF_JSON_FROM_URI	"From-URI"
 #define BLF_JSON_TO        	"To"
 #define BLF_JSON_TO_USER 	"To-User"
 #define BLF_JSON_TO_REALM	"To-Realm"
+#define BLF_JSON_TO_URI		"To-URI"
 #define BLF_JSON_CALLID    	"Call-ID"
 #define BLF_JSON_TOTAG     	"To-Tag"
 #define BLF_JSON_FROMTAG   	"From-Tag"
@@ -48,53 +53,53 @@
 #define PRESENCE_BODY_BUFFER_SIZE 4096
 
 #define MWI_BODY             "Messages-Waiting: %.*s\r\nMessage-Account: %.*s\r\nVoice-Message: %.*s/%.*s (%.*s/%.*s)\r\n"
-#define PRESENCE_BODY        "<?xml version=\"1.0\" encoding=\"UTF-8\"?> \
+#define PRESENCE_BODY        "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\
 <presence xmlns=\"urn:ietf:params:xml:ns:pidf\" xmlns:dm=\"urn:ietf:params:xml:ns:pidf:data-model\" xmlns:rpid=\"urn:ietf:params:xml:ns:pidf:rpid\" xmlns:c=\"urn:ietf:params:xml:ns:pidf:cipid\" entity=\"%s\"> \
-    <tuple xmlns=\"urn:ietf:params:xml:ns:pidf\" id=\"%s\"> \
-        <status> \
-            <basic>%s</basic> \
-        </status> \
-    </tuple> \
-    <note xmlns=\"urn:ietf:params:xml:ns:pidf\">%s</note> \
-    <dm:person xmlns:dm=\"urn:ietf:params:xml:ns:pidf:data-model\" xmlns:rpid=\"urn:ietf:params:xml:ns:pidf:rpid\" id=\"1\"> \
-        <rpid:activities>%s</rpid:activities> \
-        <dm:note>%s</dm:note> \
-    </dm:person> \
+<tuple xmlns=\"urn:ietf:params:xml:ns:pidf\" id=\"%s\">\
+<status>\
+<basic>%s</basic>\
+</status>\
+</tuple>\
+<note xmlns=\"urn:ietf:params:xml:ns:pidf\">%s</note>\
+<dm:person xmlns:dm=\"urn:ietf:params:xml:ns:pidf:data-model\" xmlns:rpid=\"urn:ietf:params:xml:ns:pidf:rpid\" id=\"1\">\
+<rpid:activities>%s</rpid:activities>\
+<dm:note>%s</dm:note>\
+</dm:person>\
 </presence>"
 
-#define DIALOGINFO_EMPTY_BODY "<?xml version=\"1.0\" encoding=\"UTF-8\"?> \
+#define DIALOGINFO_EMPTY_BODY "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\
 <dialog-info xmlns=\"urn:ietf:params:xml:ns:dialog-info\" version=\"1\" state=\"full\" entity=\"%.*s\"> \
-   <dialog direction=\"initiator\"> \
-      <state>terminated</state> \
-   </dialog> \
+<dialog direction=\"initiator\">\
+<state>terminated</state>\
+</dialog>\
 </dialog-info>"
 
-#define DIALOGINFO_BODY "<?xml version=\"1.0\" encoding=\"UTF-8\"?> \
-<dialog-info xmlns=\"urn:ietf:params:xml:ns:dialog-info\" version=\"1\" state=\"full\" entity=\"%.*s\"> \
-   <dialog id=\"%.*s\" call-id=\"%.*s\" local-tag=\"%.*s\" remote-tag=\"%.*s\" direction=\"%.*s\"> \
-      <state>%.*s</state> \
-      <local> \
-         <identity>%.*s</identity> \
-         <target uri=\"sip:%.*s\"/> \
-      </local> \
-      <remote> \
-         <identity>%.*s</identity> \
-         <target uri=\"sip:%.*s\"/> \
-      </remote> \
-   </dialog> \
+#define DIALOGINFO_BODY "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\
+<dialog-info xmlns=\"urn:ietf:params:xml:ns:dialog-info\" version=\"1\" state=\"full\" entity=\"%.*s\">\
+<dialog id=\"%.*s\" call-id=\"%.*s\" local-tag=\"%.*s\" remote-tag=\"%.*s\" direction=\"%.*s\">\
+<state>%.*s</state>\
+<local>\
+<identity display=\"%.*s\">%.*s</identity>\
+<target uri=\"%.*s\"/>\
+</local>\
+<remote>\
+<identity display=\"%.*s\">%.*s</identity>\
+<target uri=\"%.*s\"/>\
+</remote>\
+</dialog>\
 </dialog-info>"
 
-#define DIALOGINFO_BODY_2 "<?xml version=\"1.0\" encoding=\"UTF-8\"?> \
-<dialog-info xmlns=\"urn:ietf:params:xml:ns:dialog-info\" version=\"1\" state=\"full\" entity=\"%.*s\"> \
-   <dialog id=\"%.*s\" call-id=\"%.*s\" local-tag=\"%.*s\" remote-tag=\"%.*s\" direction=\"%.*s\"> \
-      <state>%.*s</state> \
-      <local> \
-         <identity>%.*s</identity> \
-      </local> \
-      <remote> \
-         <identity>%.*s</identity> \
-      </remote> \
-   </dialog> \
+#define DIALOGINFO_BODY_2 "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\
+<dialog-info xmlns=\"urn:ietf:params:xml:ns:dialog-info\" version=\"1\" state=\"full\" entity=\"%.*s\">\
+<dialog id=\"%.*s\" call-id=\"%.*s\" local-tag=\"%.*s\" remote-tag=\"%.*s\" direction=\"%.*s\">\
+<state>%.*s</state>\
+<local>\
+<identity display=\"%.*s\">%.*s</identity>\
+</local>\
+<remote>\
+<identity display=\"%.*s\">%.*s</identity>\
+</remote>\
+</dialog>\
 </dialog-info>"
 
 #define json_extract_field(json_name, field)  do {                      \
